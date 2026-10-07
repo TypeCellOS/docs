@@ -1,8 +1,11 @@
 import { RenderInPortalElement } from '@blocknote/react';
 import { VersioningSidebar } from '@blocknote/react/versioning';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Box } from '@/components';
+
+import { VersionHistoryDebug } from './VersionHistoryDebug';
 
 /**
  * Full-page right-side panel hosting the BlockNote version history sidebar.
@@ -12,10 +15,13 @@ import { Box } from '@/components';
  */
 export const VersioningSidebarPanel = ({
   onClose,
+  debug,
 }: {
   onClose: () => void;
+  debug: Omit<React.ComponentProps<typeof VersionHistoryDebug>, 'onDismiss'>;
 }) => {
   const { t } = useTranslation();
+  const [showDebug, setShowDebug] = useState(true);
 
   return (
     <RenderInPortalElement target={document.body}>
@@ -39,6 +45,12 @@ export const VersioningSidebarPanel = ({
             overflow-x: hidden;
           `}
       >
+        {showDebug && (
+          <VersionHistoryDebug
+            {...debug}
+            onDismiss={() => setShowDebug(false)}
+          />
+        )}
         <VersioningSidebar onClose={onClose} />
       </Box>
     </RenderInPortalElement>

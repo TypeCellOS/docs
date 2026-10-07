@@ -6,6 +6,7 @@ import {
   withPageBreak,
 } from '@blocknote/core';
 import { CommentsExtension } from '@blocknote/core/comments';
+import { type VersioningController } from '@blocknote/core/extensions';
 import '@blocknote/core/fonts/inter.css';
 import * as localesBN from '@blocknote/core/locales';
 import { YVersioningExtension, withCollaboration } from '@blocknote/core/y';
@@ -69,6 +70,7 @@ import BlockNoteAI from './AI';
 import { BlockNoteSuggestionMenu } from './BlockNoteSuggestionMenu';
 import { BlockNoteToolbar } from './BlockNoteToolBar/BlockNoteToolbar';
 import { DocsSideMenu } from './DocsSideMenu/DocsSideMenu';
+import { type HistoryDebugSettings } from './VersionHistoryDebug';
 import { VersioningSidebarPanel } from './VersioningSidebarPanel';
 import { CalloutBlock, PdfBlock, UploadLoaderBlock } from './custom-blocks';
 const AIMenu = BlockNoteAI?.AIMenu;
@@ -158,6 +160,14 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
     conf?.COLLABORATION_VERSION_GRANULARITY_MS ?? MIN_VERSION_GRANULARITY_MS,
     MIN_VERSION_GRANULARITY_MS,
   );
+  const historyDebugSettings = useRef<HistoryDebugSettings | undefined>(
+    undefined,
+  );
+  const historyDefaults = {
+    groupMaxGap: versionGranularityMs,
+    groupMaxDuration: versionGranularityMs,
+    limit: 50,
+  };
 
   const collabName = user?.full_name || user?.email;
   const cursorName = collabName || t('Anonymous');
@@ -209,10 +219,17 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
       beforeRestoreName:
         localesBN[langLocalesBN as keyof typeof localesBN].versioning
           .before_restore,
-      activityParams: {
-        group: true,
-        groupMaxGap: versionGranularityMs,
-        groupMaxDuration: versionGranularityMs,
+      // Read overrides for each request, without reinstalling the editor.
+      get activityParams() {
+        return {
+          group: true,
+          groupByUser: false,
+          ...(historyDebugSettings.current ?? {
+            groupMaxGap: versionGranularityMs,
+            groupMaxDuration: versionGranularityMs,
+            limit: 50,
+          }),
+        };
       },
     });
     return YVersioningExtension({ storage });
@@ -444,6 +461,36 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
         {isVersioningSidebarOpen && (
           <VersioningSidebarPanel
             onClose={() => setIsVersioningSidebarOpen(false)}
+            debug={{
+              defaults: historyDefaults,
+              initialSettings: historyDebugSettings.current ?? historyDefaults,
+              canCreate: !!doc.abilities.partial_update,
+              onApply: async (settings) => {
+                historyDebugSettings.current = settings;
+                const mode =
+                  editor.getExtension<VersioningController>('versioning');
+                return mode ? mode.list() : { status: 'unavailable' };
+              },
+              onCreate: async () => {
+                const mode =
+                  editor.getExtension<VersioningController>('versioning');
+                if (!mode || !doc.abilities.partial_update) {
+                  return { status: 'unavailable' };
+                }
+                const latest = mode.store.state;
+                if (
+                  latest.mode === 'versions' &&
+                  latest.history.data?.[0]?.name
+                ) {
+                  return { status: 'error', error: { type: 'conflict' } };
+                }
+                return mode.create(
+                  t('Test version · {{time}}', {
+                    time: new Date().toLocaleTimeString(),
+                  }),
+                );
+              },
+            }}
           />
         )}
       </BlockNoteView>

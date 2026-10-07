@@ -15,6 +15,7 @@ import {
   createDocumentPermissions,
   logger,
 } from '@y/hub';
+import * as Y from '@y/y';
 
 import { backendPublicJwk } from './backend.js';
 import {
@@ -268,9 +269,7 @@ export const api = [
           return jsonResponse(400, { error: 'Unknown branch' });
         }
         const body = await req.bytes();
-        // req.bytes() resolves to a Node Buffer, but the compute-task schema
-        // requires an exact Uint8Array (lib0 $constructedBy compares the
-        // constructor) — re-view the same bytes without copying
+        // Re-view the Node Buffer as a Uint8Array without copying.
         const update = new Uint8Array(
           body.buffer,
           body.byteOffset,
@@ -314,21 +313,40 @@ export const api = [
           authInfo.userid;
         let result;
         try {
-          // diffs the posted update against the (empty) current doc and
-          // stamps the attribution contentmap
-          result = await req.yhub.computePool.patchYdoc(
-            {
-              update,
-              currentDoc: gcDoc ?? EMPTY_YDOC,
-              userid,
-              customAttributions: [],
-            },
-            { docRef: req.docRef },
+          // yhub 0.9.1 removed computePool.patchYdoc. Keep the strict-create
+          // validation/diff here, using the same Yjs operations it used, and
+          // attribute the seed as the new built-in PATCH endpoint does.
+          const contentids = Y.excludeContentIds(
+            Y.createContentIdsFromUpdate(update),
+            Y.createContentIdsFromUpdate(gcDoc ?? EMPTY_YDOC),
           );
+          const diffedUpdate = Y.intersectUpdateWithContentIds(
+            update,
+            contentids,
+          );
+          const now = Date.now();
+          result =
+            diffedUpdate.byteLength > EMPTY_UPDATE_MAX_BYTES
+              ? {
+                  update: diffedUpdate,
+                  contentmap: Y.encodeContentMap(
+                    Y.createContentMapFromContentIds(
+                      Y.createContentIdsFromUpdate(diffedUpdate),
+                      [
+                        Y.createContentAttribute('insert', userid),
+                        Y.createContentAttribute('insertAt', now),
+                      ],
+                      [
+                        Y.createContentAttribute('delete', userid),
+                        Y.createContentAttribute('deleteAt', now),
+                      ],
+                    ),
+                  ),
+                }
+              : null;
         } catch {
-          // a malformed update makes the compute worker throw (yhub logs
-          // 'worker failed' and replaces the thread). The update is the only
-          // untrusted input here, so a rejection maps to 400; getDoc /
+          // The update is the only untrusted input here, so a decoding
+          // rejection maps to 400; getDoc /
           // addMessage failures stay generic 500s.
           return jsonResponse(400, { error: 'Invalid Yjs update' });
         }

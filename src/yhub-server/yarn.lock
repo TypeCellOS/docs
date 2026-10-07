@@ -860,15 +860,15 @@
   resolved "https://registry.yarnpkg.com/@y-crdt/yn/-/yn-0.1.4.tgz#8cd8329bcf0b30a7614a10fbd1018dde5ab54f45"
   integrity sha512-BrRpTE4tvONSx+hYXbpZERu7Cx3/xyHFNXKNnBd9/maTJNsCGaVwfkfH3PN9fx/IrIXxa3GTjX0t8zJam273BQ==
 
-"@y/hub@0.9.0":
-  version "0.9.0"
-  resolved "https://registry.yarnpkg.com/@y/hub/-/hub-0.9.0.tgz#9a323fd43cb2e728920b9d9d51358f347fc08656"
-  integrity sha512-xGzLoPpJ1lrZo++ULu0IAs3bnLpjCNhsEgHcRiIf+XaTO5iu7GjwnbO6HGqI4LiP45Dn952kkh+WrmhK8qkfaQ==
+"@y/hub@0.9.1":
+  version "0.9.1"
+  resolved "https://registry.yarnpkg.com/@y/hub/-/hub-0.9.1.tgz#cfb69950f27612381213207a2ff82b69e892c662"
+  integrity sha512-t8pKRrIqWlgHrWhQU8s964ch7LVWa+ssqCcHmTNukVfJ6pI3wm8WMQnNRiBVBuUzprZ6Hfvw+8jDI70vYFm4Iw==
   dependencies:
     "@y-crdt/yn" "^0.1.4"
     "@y/protocols" "^1.0.6-rc.1"
-    "@y/y" "^14.0.0-rc.24"
-    lib0 "^1.0.0-rc.27"
+    "@y/y" "^14.0.0-rc.28"
+    lib0 "^1.0.0-rc.36"
     minio "^8.0.6"
     pino "^10.3.1"
     postgres "^3.4.3"
@@ -882,12 +882,12 @@
   dependencies:
     lib0 "^1.0.0-rc.1"
 
-"@y/y@14.0.0-rc.25", "@y/y@^14.0.0-rc.24":
-  version "14.0.0-rc.25"
-  resolved "https://registry.yarnpkg.com/@y/y/-/y-14.0.0-rc.25.tgz#e5b2d825406984dc71fe65a71977ffe005ffd273"
-  integrity sha512-kG61I9GLF85aNtBelJKcf6D6PhLoWUBWQ2kyTAKwOWRUnuCkzGRCp3gUdwcTB9TINtgC9w5kPAKzstNDIpwSXw==
+"@y/y@14.0.0-rc.28", "@y/y@^14.0.0-rc.28":
+  version "14.0.0-rc.28"
+  resolved "https://registry.yarnpkg.com/@y/y/-/y-14.0.0-rc.28.tgz#f79ebb13837fecaad47a8701dc78324abe83bd45"
+  integrity sha512-Hzw2sSch5RpT4aKz0643LQnoN7qSm63VyWb5D3zzCDEgSe5G0CKu5W7zcAXKDlVwkXg5puKTNX5k/wdVg4LtMA==
   dependencies:
-    lib0 "^1.0.0-rc.28"
+    lib0 "^1.0.0-rc.35"
 
 acorn-jsx@^5.3.2:
   version "5.3.2"
@@ -1411,10 +1411,15 @@ levn@^0.4.1:
     prelude-ls "^1.2.1"
     type-check "~0.4.0"
 
-lib0@^1.0.0-rc.1, lib0@^1.0.0-rc.27, lib0@^1.0.0-rc.28:
+lib0@^1.0.0-rc.1:
   version "1.0.0-rc.30"
   resolved "https://registry.yarnpkg.com/lib0/-/lib0-1.0.0-rc.30.tgz#2c2aec2c91a99230891918e0a551472a6cc8052e"
   integrity sha512-WhIbHSbBMttOT3Ke/HDA5+kIf9KRDSd5L+aJMBkvJSxwqL7w7004/0X5fjXj8loBIm5PkdgSMRmlPjC2mIzuCw==
+
+lib0@^1.0.0-rc.35, lib0@^1.0.0-rc.36:
+  version "1.0.0-rc.36"
+  resolved "https://registry.yarnpkg.com/lib0/-/lib0-1.0.0-rc.36.tgz#aa0b3cdfacb275c2cbce401cae3c8a99a3a49cc2"
+  integrity sha512-7t/I+PCQqakal22rhXq5giOUtDP/RfecQtdeKvzCtnAvPkxSLAE+/Zvzi/kJDopg+hBAYKo46qmxmlkhX0tYlQ==
 
 lightningcss-android-arm64@1.33.0:
   version "1.33.0"

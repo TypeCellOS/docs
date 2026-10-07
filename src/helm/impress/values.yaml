@@ -141,6 +141,7 @@ ingressCollaborationApi:
     - /collaboration/ydoc/
     - /collaboration/activity/
     - /collaboration/changeset/
+    - /collaboration/version/
     - /collaboration/rollback/
     - /collaboration/jwks/
   ## @param ingressCollaborationApi.hosts Additional host to configure for the Ingress

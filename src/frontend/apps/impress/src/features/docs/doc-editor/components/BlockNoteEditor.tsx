@@ -8,7 +8,7 @@ import {
 import { CommentsExtension } from '@blocknote/core/comments';
 import '@blocknote/core/fonts/inter.css';
 import * as localesBN from '@blocknote/core/locales';
-import { withCollaboration } from '@blocknote/core/yjs';
+import { YVersioningExtension, withCollaboration } from '@blocknote/core/y';
 import {
   createReactDiagramBlockSpec,
   locales as diagramLocales,
@@ -27,14 +27,15 @@ import {
   useCreateBlockNote,
 } from '@blocknote/react';
 import { FindAndReplace } from '@tiptap/extension-find-and-replace';
+import { WebsocketProvider } from '@y/websocket';
+import * as Y from '@y/y';
 import { useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { WebsocketProvider } from 'y-websocket';
-import * as Y from 'yjs';
 
 import { Box, TextErrors } from '@/components';
 import { useConfig } from '@/core';
+import { collaborationHttpTarget } from '@/core/config/hooks/useCollaborationUrl';
 import { useCunninghamTheme } from '@/cunningham';
 import {
   DocsCommentsStyle,
@@ -43,11 +44,13 @@ import {
 } from '@/docs/doc-comments';
 import { DocsFindReplaceStyle } from '@/docs/doc-find-replace/styles';
 import { type Doc } from '@/docs/doc-management/types';
+import { useDocUserStore, userColorsForId } from '@/docs/doc-share';
 import { avatarUrlFromName, useAuth } from '@/features/auth';
 import { useRightPanelStore } from '@/features/right-panel/stores/useRightPanelStore';
 import { useAnalytics } from '@/libs/Analytics';
 
 import { AI_FEATURE_FLAG, DEFAULT_LOCALE } from '../conf';
+import { createDocsVersionStorage } from '../createDocsVersionStorage';
 import {
   useHeadings,
   useScrollToBlockAnchor,
@@ -56,14 +59,16 @@ import {
   useUploadStatus,
 } from '../hook';
 import { useEditorStore } from '../stores';
+import { useVersioningSidebarStore } from '../stores/useVersioningSidebarStore';
 import { DocsEditorStyle } from '../styles';
 import { type DocsBlockNoteEditor } from '../types';
-import { randomColor, sanitizeColor } from '../utils';
+import { sanitizeColor } from '../utils';
 
 import BlockNoteAI from './AI';
 import { BlockNoteSuggestionMenu } from './BlockNoteSuggestionMenu';
 import { BlockNoteToolbar } from './BlockNoteToolBar/BlockNoteToolbar';
 import { DocsSideMenu } from './DocsSideMenu/DocsSideMenu';
+import { VersioningSidebarPanel } from './VersioningSidebarPanel';
 import { CalloutBlock, PdfBlock, UploadLoaderBlock } from './custom-blocks';
 const AIMenu = BlockNoteAI?.AIMenu;
 const AIMenuController = BlockNoteAI?.AIMenuController;
@@ -78,6 +83,7 @@ import XLMultiColumn from './xl-multi-column';
 
 const localesBNMultiColumn = XLMultiColumn?.locales;
 const withMultiColumn = XLMultiColumn?.withMultiColumn;
+const MIN_VERSION_GRANULARITY_MS = 5 * 60_000;
 
 const baseBlockNoteSchema = withPageBreak(
   BlockNoteSchema.create({
@@ -113,6 +119,10 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
   const refEditorContainer = useRef<HTMLDivElement>(null);
 
   const { i18n, t } = useTranslation();
+  const {
+    isOpen: isVersioningSidebarOpen,
+    setIsOpen: setIsVersioningSidebarOpen,
+  } = useVersioningSidebarStore();
   const langLocalesBN =
     !i18n.resolvedLanguage || !(i18n.resolvedLanguage in localesBN)
       ? DEFAULT_LOCALE
@@ -143,6 +153,10 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
     doc.abilities?.ai_proxy
   );
   const aiExtension = useAI?.(doc.id, aiBlockNoteAllowed);
+  const versionGranularityMs = Math.max(
+    conf?.COLLABORATION_VERSION_GRANULARITY_MS ?? MIN_VERSION_GRANULARITY_MS,
+    MIN_VERSION_GRANULARITY_MS,
+  );
 
   const collabName = user?.full_name || user?.email;
   const cursorName = collabName || t('Anonymous');
@@ -156,6 +170,8 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
     canSeeComment,
     user,
   );
+  // Resolve author ids stored in the document (versioning, suggestions) to users.
+  const docUserStore = useDocUserStore(doc.id);
 
   // Comment sidebar
   const { threadsSidebarTarget, filter: threadsSidebarFilter } =
@@ -165,19 +181,53 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
 
   const currentUserAvatarUrl = useMemo(() => {
     if (canSeeComment) {
-      return avatarUrlFromName(collabName, themeTokens?.font?.families?.base);
+      return avatarUrlFromName(
+        collabName,
+        themeTokens?.font?.families?.base,
+        user?.id ?? 'anonymous',
+      );
     }
-  }, [canSeeComment, collabName, themeTokens?.font?.families?.base]);
+  }, [canSeeComment, collabName, themeTokens?.font?.families?.base, user?.id]);
+
+  const collabTarget = useMemo(() => {
+    if (!provider.serverUrl) {
+      return undefined;
+    }
+    return collaborationHttpTarget(provider.serverUrl);
+  }, [provider.serverUrl]);
+
+  const versioningExtension = useMemo(() => {
+    if (!collabTarget) {
+      return undefined;
+    }
+    const storage = createDocsVersionStorage({
+      baseUrl: collabTarget.serverUrl,
+      org: collabTarget.org,
+      docId: doc.id,
+      fragment: provider.doc.get('document-store'),
+      beforeRestoreName:
+        localesBN[langLocalesBN as keyof typeof localesBN].versioning
+          .before_restore,
+      activityParams: {
+        group: true,
+        groupMaxGap: versionGranularityMs,
+        groupMaxDuration: versionGranularityMs,
+      },
+    });
+    return YVersioningExtension({ storage });
+  }, [collabTarget, doc.id, langLocalesBN, provider.doc, versionGranularityMs]);
 
   const editor: DocsBlockNoteEditor = useCreateBlockNote(
     withCollaboration({
       collaboration: {
         provider,
-        fragment: provider.doc.getXmlFragment('document-store'),
+        fragment: provider.doc.get('document-store'),
         user: {
+          id: user?.id ?? 'anonymous',
           name: cursorName,
-          color: randomColor(),
+          color: userColorsForId(user?.id ?? 'anonymous').color,
         },
+        resolveUsers: docUserStore,
         /**
          * We render the cursor with a custom element to:
          * - fix rendering issue with the default cursor
@@ -283,6 +333,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
         // Highlights the source of code blocks and of the math / diagram
         // blocks' editable LaTeX / Mermaid popups.
         syntaxHighlighter,
+        ...(versioningExtension ? [versioningExtension] : []),
         CommentsExtension({ threadStore, resolveUsers }),
         ...(aiExtension ? [aiExtension] : []),
       ],
@@ -311,6 +362,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
     [
       aiExtension,
       cursorName,
+      docUserStore,
       langLocalesBN,
       langLocalesBNMultiColumn,
       langLocalesBNAI,
@@ -319,6 +371,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
       uploadFile,
       threadStore,
       resolveUsers,
+      versioningExtension,
     ],
   );
 
@@ -339,7 +392,11 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
   }, [setEditor, editor]);
 
   return (
-    <Box ref={refEditorContainer} $height="100%">
+    <Box
+      ref={refEditorContainer}
+      $height="100%"
+      style={{ position: 'relative' }}
+    >
       <DocsEditorStyle />
       <DocsCommentsStyle
         canSeeComment={canSeeComment}
@@ -365,7 +422,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
         comments={false}
         aria-label={t('Document editor')}
         // To not clipped the floating part in the editor area
-        portalElements={{ default: null }}
+        portalElements={{ default: 'body' }}
       >
         {aiBlockNoteAllowed && AIMenuController && AIMenu && (
           <AIMenuController aiMenu={AIMenu} />
@@ -383,6 +440,11 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
             />,
             threadsSidebarTarget,
           )}
+        {isVersioningSidebarOpen && (
+          <VersioningSidebarPanel
+            onClose={() => setIsVersioningSidebarOpen(false)}
+          />
+        )}
       </BlockNoteView>
     </Box>
   );
@@ -390,7 +452,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
 
 interface BlockNoteReaderProps {
   docId: Doc['id'];
-  initialContent: Y.XmlFragment;
+  initialContent: Y.Node;
   isMainEditor?: boolean;
 }
 
@@ -407,6 +469,7 @@ export const BlockNoteReader = ({
       collaboration: {
         fragment: initialContent,
         user: {
+          id: '',
           name: '',
           color: '',
         },

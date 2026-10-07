@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { userColorsForId } from '../userColors';
+import { userColorForeground, userColorsForId } from '../userColors';
 
 import { AvatarSvg } from './AvatarSvg';
 
@@ -21,13 +21,14 @@ export const UserAvatar = ({
   background,
 }: UserAvatarProps) => {
   const name = fullName?.trim() || '?';
+  const color = background || userColorsForId(userId ?? name).color;
 
   return (
     <AvatarSvg
       className="--docs--user-avatar"
       initials={getInitialFromName(name).toUpperCase()}
-      background={background || userColorsForId(userId ?? name).color}
-      foreground={background ? undefined : '#1f2937'}
+      background={color}
+      foreground={userColorForeground(color)}
     />
   );
 };
@@ -46,7 +47,7 @@ export const avatarUrlFromName = (
       className="--docs--user-avatar"
       initials={initials}
       background={background}
-      foreground="#1f2937"
+      foreground={userColorForeground(background)}
       fontFamily={fontFamily}
     />,
   );

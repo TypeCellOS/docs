@@ -5,7 +5,10 @@ import { createGlobalStyle } from 'styled-components';
 import { Box } from '@/components';
 import { Waffle } from '@/components/Waffle';
 import { ButtonLogin, gotoLogout, useAuth } from '@/features/auth';
-import { userColorsForId } from '@/features/auth/userColors';
+import {
+  userColorForeground,
+  userColorsForId,
+} from '@/features/auth/userColors';
 import { HelpMenu } from '@/features/help';
 import { LanguagePicker } from '@/features/language/components/LanguagePicker';
 
@@ -18,7 +21,7 @@ const FooterActionsGlobalStyle = createGlobalStyle<{ $userColor: string }>`
   .--docs--footer-actions .c__avatar,
   .user-menu__popover .user-menu__content__body__user-info > .c__avatar {
     background: ${({ $userColor }) => $userColor};
-    color: #1f2937;
+    color: ${({ $userColor }) => userColorForeground($userColor)};
   }
 `;
 

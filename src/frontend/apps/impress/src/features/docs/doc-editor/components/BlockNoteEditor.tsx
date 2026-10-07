@@ -46,6 +46,7 @@ import { DocsFindReplaceStyle } from '@/docs/doc-find-replace/styles';
 import { type Doc } from '@/docs/doc-management/types';
 import { useDocUserStore, userColorsForId } from '@/docs/doc-share';
 import { avatarUrlFromName, useAuth } from '@/features/auth';
+import { userColorForeground } from '@/features/auth/userColors';
 import { useRightPanelStore } from '@/features/right-panel/stores/useRightPanelStore';
 import { useAnalytics } from '@/libs/Analytics';
 
@@ -253,7 +254,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
           labelElement.setAttribute('spellcheck', `false`);
           labelElement.setAttribute(
             'style',
-            `background-color: ${safeColor};border: 1px solid ${safeColor};`,
+            `background-color: ${safeColor};border: 1px solid ${safeColor};color: ${userColorForeground(safeColor)};`,
           );
           labelElement.insertBefore(document.createTextNode(user.name), null);
 

@@ -18,6 +18,7 @@ and this project adheres to
 - ✨(frontend) show yhub version history in the BlockNote sidebar
 - ✨(frontend) provide consistent author and cursor colors in BlockNote
 - 💄(frontend) share deterministic user colors across cursors and avatars
+- 💄(frontend) derive readable author colors with matching pastel highlights
 - 💄(frontend) redesign 404 error standalone page #2696
 - 💄(frontend) redesign 403 access denied page #2720
 - ✨(frontend) duplicate with subdocuments #2584

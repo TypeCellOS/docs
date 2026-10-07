@@ -1,5 +1,5 @@
-// Use the original cursor's pastel HSL ranges, seeded by identity rather than
-// Math.random so cursors, avatars and author highlights agree across sessions.
+// Seed one hue per identity. Use a readable dark shade for text/cursors and
+// the original pastel shade for author highlights.
 export const userColorsForId = (id: string) => {
   let hash = 2166136261;
   for (let i = 0; i < id.length; i++) {
@@ -17,12 +17,38 @@ export const userColorsForId = (id: string) => {
   const hue = nextInt(0, 360);
   const saturation = nextInt(42, 98);
   const lightness = nextInt(70, 90);
+  const colorLight = hslToHex(hue, saturation, lightness);
+  const lightLuminance = relativeLuminance(colorLight);
+  let darkLightness = 40;
+  let color = hslToHex(hue, saturation, darkLightness);
+
+  // Yellow/green hues need more darkening than blue to keep text readable.
+  while (
+    darkLightness > 1 &&
+    (lightLuminance + 0.05) / (relativeLuminance(color) + 0.05) < 4.5
+  ) {
+    color = hslToHex(hue, saturation, --darkLightness);
+  }
 
   return {
-    color: hslToHex(hue, saturation, lightness),
-    colorLight: hslToHex(hue, saturation, 96),
+    color,
+    colorLight,
   };
 };
+
+// Same relative-luminance threshold as BlockNote's default cursor renderer.
+export const userColorForeground = (background: string) =>
+  relativeLuminance(background) <= 0.179 ? '#ffffff' : '#000000';
+
+function relativeLuminance(hex: string) {
+  const channels = [1, 3, 5].map((offset) => {
+    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.03928
+      ? value / 12.92
+      : Math.pow((value + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
 
 function hslToHex(h: number, s: number, l: number) {
   l /= 100;

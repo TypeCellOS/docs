@@ -1,5 +1,8 @@
 import { type VersionOperationResult } from '@blocknote/core/extensions';
-import { type ExperimentalVersionDiffs } from '@blocknote/core/y';
+import {
+  type ExperimentalVersionDiffs,
+  type VersionDiffFixes,
+} from '@blocknote/core/y';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -43,6 +46,20 @@ export const VersionHistoryDebug = ({
   const [unit, setUnit] = useState(60_000);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const diffFixOptions: {
+    value: VersionDiffFixes | undefined;
+    label: string;
+  }[] = [
+    { value: undefined, label: t('Default') },
+    {
+      value: 'implicitDeleteAttribution',
+      label: t('Implicit delete attribution'),
+    },
+    {
+      value: 'implicitDeleteAttributionAndRecreatedBlocks',
+      label: t('+ re-created blocks'),
+    },
+  ];
   const valid =
     Number.isSafeInteger(settings.groupMaxGap) &&
     settings.groupMaxGap > 0 &&
@@ -193,10 +210,7 @@ export const VersionHistoryDebug = ({
           border-top: 1px solid var(--c--contextuals--border--surface--primary);
           padding-top: 14px;
         }
-        .debug-checkbox { display: flex; align-items: center; gap: 8px; }
-        .debug-checkbox + .debug-checkbox { margin-top: 6px; }
-        .debug-checkbox input { width: auto; height: auto; margin: 0; }
-        .debug-experimental small { margin-top: 8px; }
+        .debug-experimental { display: flex; flex-direction: column; gap: 6px; }
         [role='status']:not(:empty) {
           margin-top: 12px;
           padding: 8px 10px;
@@ -348,34 +362,29 @@ export const VersionHistoryDebug = ({
             </small>
           </div>
           <div className="debug-experimental">
-            <label className="debug-checkbox">
-              <input
-                type="checkbox"
-                checked={!!experimental.lostContentAttribution}
-                onChange={(event) =>
-                  onExperimentalChange({
-                    ...experimental,
-                    lostContentAttribution: event.target.checked,
-                  })
-                }
-              />
-              {t('Lost content attribution')}
+            <label htmlFor="history-debug-diff-fixes">
+              {t('Version diff fixes')}
             </label>
-            <label className="debug-checkbox">
-              <input
-                type="checkbox"
-                checked={!!experimental.blockCopyDiffs}
-                onChange={(event) =>
-                  onExperimentalChange({
-                    ...experimental,
-                    blockCopyDiffs: event.target.checked,
-                  })
-                }
-              />
-              {t('Block copy diffs')}
-            </label>
+            <select
+              id="history-debug-diff-fixes"
+              value={experimental.versionDiffFixes ?? ''}
+              onChange={(event) =>
+                onExperimentalChange({
+                  ...experimental,
+                  versionDiffFixes: diffFixOptions.find(
+                    ({ value }) => (value ?? '') === event.target.value,
+                  )?.value,
+                })
+              }
+            >
+              {diffFixOptions.map(({ value, label }) => (
+                <option key={label} value={value ?? ''}>
+                  {label}
+                </option>
+              ))}
+            </select>
             <small>
-              {t('Experimental diffs. Changing them reloads the editor.')}
+              {t('Experimental. Changing this reloads the editor.')}
             </small>
           </div>
         </Box>

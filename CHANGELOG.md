@@ -9,7 +9,7 @@ and this project adheres to
 ### Added
 
 - ✨(frontend) add local history grouping controls and test checkpoints
-- ✨(frontend) add debug toggles for experimental version diffs
+- ✨(frontend) add a debug choice for experimental version diff fixes
 - 👷(ci) lint, typecheck, build and test the collaboration server (yhub)
 - 👷(ci) check the load-test tooling: swarm, canary, k6 and dashboards
 - 👷(ci) cancel the superseded runs of a pull request

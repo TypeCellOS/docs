@@ -1,4 +1,5 @@
 import { type VersionOperationResult } from '@blocknote/core/extensions';
+import { type ExperimentalVersionDiffs } from '@blocknote/core/y';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,6 +20,8 @@ interface Props {
   defaults: HistoryDebugSettings;
   initialSettings: HistoryDebugSettings;
   canCreate: boolean;
+  experimental: ExperimentalVersionDiffs;
+  onExperimentalChange: (experimental: ExperimentalVersionDiffs) => void;
   onDismiss: () => void;
   onApply: (settings: HistoryDebugSettings) => Promise<VersionOperationResult>;
   onCreate: () => Promise<VersionOperationResult>;
@@ -29,6 +32,8 @@ export const VersionHistoryDebug = ({
   defaults,
   initialSettings,
   canCreate,
+  experimental,
+  onExperimentalChange,
   onDismiss,
   onApply,
   onCreate,
@@ -184,6 +189,14 @@ export const VersionHistoryDebug = ({
           color: var(--c--contextuals--content--semantic--neutral--secondary);
         }
         .debug-checkpoint small { margin-top: 8px; }
+        .debug-experimental {
+          border-top: 1px solid var(--c--contextuals--border--surface--primary);
+          padding-top: 14px;
+        }
+        .debug-checkbox { display: flex; align-items: center; gap: 8px; }
+        .debug-checkbox + .debug-checkbox { margin-top: 6px; }
+        .debug-checkbox input { width: auto; height: auto; margin: 0; }
+        .debug-experimental small { margin-top: 8px; }
         [role='status']:not(:empty) {
           margin-top: 12px;
           padding: 8px 10px;
@@ -332,6 +345,37 @@ export const VersionHistoryDebug = ({
             </button>
             <small>
               {t('Local settings. Test versions are saved to the document.')}
+            </small>
+          </div>
+          <div className="debug-experimental">
+            <label className="debug-checkbox">
+              <input
+                type="checkbox"
+                checked={!!experimental.lostContentAttribution}
+                onChange={(event) =>
+                  onExperimentalChange({
+                    ...experimental,
+                    lostContentAttribution: event.target.checked,
+                  })
+                }
+              />
+              {t('Lost content attribution')}
+            </label>
+            <label className="debug-checkbox">
+              <input
+                type="checkbox"
+                checked={!!experimental.blockCopyDiffs}
+                onChange={(event) =>
+                  onExperimentalChange({
+                    ...experimental,
+                    blockCopyDiffs: event.target.checked,
+                  })
+                }
+              />
+              {t('Block copy diffs')}
+            </label>
+            <small>
+              {t('Experimental diffs. Changing them reloads the editor.')}
             </small>
           </div>
         </Box>

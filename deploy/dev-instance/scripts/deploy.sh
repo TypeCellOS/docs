@@ -20,5 +20,22 @@ set -a; . ./.env; set +a
 docker compose exec -T backend python manage.py createsuperuser \
   --email admin@example.com --password "${SEED_PASSWORD_ADMIN}"
 
+# Demo users: the password is the user name. The realm import sets it on the
+# first start only, so set it again for a Keycloak volume that already exists.
+for attempt in $(seq 1 30); do
+  if docker compose exec -T -e KC_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD}" keycloak sh -c '
+      /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 \
+        --realm master --user admin --password "$KC_ADMIN_PASSWORD" >/dev/null &&
+      for user in alice bob carol dave; do
+        /opt/keycloak/bin/kcadm.sh set-password -r docs --username "$user" --new-password "$user"
+      done'; then
+    break
+  fi
+  [ "${attempt}" = 30 ] && { echo "Keycloak is not ready" >&2; exit 1; }
+  sleep 4
+done
+
+./scripts/seed.sh
+
 docker image prune -f >/dev/null
 docker compose ps --format 'table {{.Service}}\t{{.Image}}\t{{.Status}}'

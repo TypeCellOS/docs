@@ -54,7 +54,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "${SEED_PASSWORD_ALICE}",
+          "value": "alice",
           "temporary": false
         }
       ]
@@ -69,7 +69,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "${SEED_PASSWORD_BOB}",
+          "value": "bob",
           "temporary": false
         }
       ]
@@ -84,7 +84,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "${SEED_PASSWORD_CAROL}",
+          "value": "carol",
           "temporary": false
         }
       ]
@@ -99,7 +99,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "${SEED_PASSWORD_DAVE}",
+          "value": "dave",
           "temporary": false
         }
       ]

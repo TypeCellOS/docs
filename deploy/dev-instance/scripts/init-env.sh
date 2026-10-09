@@ -32,12 +32,9 @@ S3_ACCESS_KEY=docs
 S3_SECRET_KEY=$(random)
 KEYCLOAK_ADMIN_PASSWORD=$(random 24)
 
-# Dev users of the "docs" realm, imported on the first start of Keycloak.
+# The "admin" user of the "docs" realm, also the password of the Django admin
+# (admin@example.com). The demo users' password is their user name.
 SEED_PASSWORD_ADMIN=$(random 16)
-SEED_PASSWORD_ALICE=$(random 16)
-SEED_PASSWORD_BOB=$(random 16)
-SEED_PASSWORD_CAROL=$(random 16)
-SEED_PASSWORD_DAVE=$(random 16)
 ENV
   echo "Created .env for ${domain}"
 fi

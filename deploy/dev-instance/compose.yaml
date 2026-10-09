@@ -111,10 +111,6 @@ services:
       - DOCS_HOST=${DOCS_HOST}
       - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
       - SEED_PASSWORD_ADMIN=${SEED_PASSWORD_ADMIN}
-      - SEED_PASSWORD_ALICE=${SEED_PASSWORD_ALICE}
-      - SEED_PASSWORD_BOB=${SEED_PASSWORD_BOB}
-      - SEED_PASSWORD_CAROL=${SEED_PASSWORD_CAROL}
-      - SEED_PASSWORD_DAVE=${SEED_PASSWORD_DAVE}
     volumes:
       - keycloak:/opt/keycloak/data
       - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro

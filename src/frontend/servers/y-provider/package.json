@@ -16,8 +16,8 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@blocknote/core": "https://pkg.pr.new/TypeCellOS/BlockNote/@blocknote/core@d7d51b2097",
-    "@blocknote/server-util": "https://pkg.pr.new/TypeCellOS/BlockNote/@blocknote/server-util@d7d51b2097",
+    "@blocknote/core": "https://pkg.pr.new/TypeCellOS/BlockNote/@blocknote/core@3b7d4ec140",
+    "@blocknote/server-util": "https://pkg.pr.new/TypeCellOS/BlockNote/@blocknote/server-util@3b7d4ec140",
     "@sentry/node": "10.75.0",
     "@sentry/profiling-node": "10.75.0",
     "@tiptap/extensions": "*",

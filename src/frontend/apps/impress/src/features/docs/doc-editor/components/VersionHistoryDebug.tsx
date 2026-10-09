@@ -384,7 +384,9 @@ export const VersionHistoryDebug = ({
               ))}
             </select>
             <small>
-              {t('Experimental. Changing this reloads the editor.')}
+              {t(
+                'Experimental. Changing this shows the selected versions again.',
+              )}
             </small>
           </div>
         </Box>

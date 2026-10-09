@@ -1,5 +1,5 @@
 name: Dev instance
-run-name: Dev instance (${{ github.event_name == 'workflow_dispatch' && format('{0}{1}', inputs.ref, inputs.seed && ', seed' || '') || github.ref_name }})
+run-name: Dev instance (${{ inputs.ref || github.ref_name }})
 
 # Builds the images that differ from upstream and deploys them to the dev
 # server (deploy/dev-instance). A merge to the `dev` branch ships it.
@@ -18,14 +18,6 @@ on:
         description: "Branch, tag or commit to deploy. The last deploy wins: the next merge to dev replaces it."
         type: string
         default: dev
-      seed:
-        description: "Replay the meeting document into the instance after the deploy"
-        type: boolean
-        default: false
-      seed_force:
-        description: "Write a new copy of the document even if it exists"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -145,9 +137,3 @@ jobs:
           curl -fsS --retry 10 --retry-delay 6 --retry-all-errors -o /dev/null "https://$host/"
           curl -fsS --retry 10 --retry-delay 6 --retry-all-errors "https://$host/api/v1.0/config/" -o /dev/null
           echo "Deployed to https://$host/" >> "$GITHUB_STEP_SUMMARY"
-      - name: Seed the meeting document
-        if: github.event_name == 'workflow_dispatch' && inputs.seed
-        run: |
-          ssh dev-instance "SEED_FORCE=${{ inputs.seed_force && '1' || '' }} /opt/docs/scripts/seed.sh" \
-            | tee seed.log
-          grep -Eo 'https://[^ ]+/docs/[^ ]+' seed.log | tail -1 | sed 's/^/Seeded document: /' >> "$GITHUB_STEP_SUMMARY"

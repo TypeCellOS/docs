@@ -1,32 +1,57 @@
 #!/usr/bin/env bash
-# Replays a recorded document history into the dev instance, as the dev users
-# (see seed/seed.mjs). Idempotent: an existing document is kept.
+# Puts the sample document on the instance: "07/10 meeting agenda (sample)",
+# owned by alice, with 15 named versions by alice, bob, carol and dave.
+# deploy.sh runs it on every deploy. It does nothing when the document is
+# already there, and it takes about a minute at most: the history is built
+# offline with its past timestamps, then stored in yhub.
 #
 #   ./scripts/seed.sh [path to versions JSON]   (default: seed-data/meetingVersions.json)
-#   SEED_FORCE=1 ./scripts/seed.sh              writes a new copy
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-data="$(realpath "${1:-seed-data/meetingVersions.json}")"
+data="${1:-seed-data/meetingVersions.json}"
 if [ ! -f "${data}" ]; then
-  echo "No seed data at ${data}: copy the versions JSON to the server first." >&2
-  exit 1
+  echo "seed: no ${data} on the server, so no sample document" >&2
+  exit 0
 fi
+data="$(realpath "${data}")"
+out="$(pwd)/seed-data/out"
+rm -rf "${out}" && mkdir -p "${out}" && chmod 777 "${out}"
 
-set -a; . ./.env; set +a
-users="alice:${SEED_PASSWORD_ALICE},bob:${SEED_PASSWORD_BOB},carol:${SEED_PASSWORD_CAROL},dave:${SEED_PASSWORD_DAVE}"
+host="$(grep '^DOCS_HOST=' .env | cut -d= -f2)"
 
+# 1. Sign in as the demo users, create the document, build its history
 docker run --rm \
   -v "$(pwd)/seed:/seed:ro" \
   -v "${data}:/data/versions.json:ro" \
-  -v docs-seed-modules:/work/node_modules \
-  -e DOCS_URL="https://${DOCS_HOST}" \
-  -e SEED_USERS="${users}" \
+  -v "${out}:/out" \
+  -v docs-seed-npm:/root/.npm \
+  -e DOCS_URL="https://${host}" \
+  -e SEED_USERS="alice:alice,bob:bob,carol:carol,dave:dave" \
   -e SEED_DATA=/data/versions.json \
-  -e SEED_FORCE="${SEED_FORCE:-}" \
-  -e SEED_TITLE="${SEED_TITLE:-}" \
-  -e SEED_VERSION_GAP_S="${SEED_VERSION_GAP_S:-}" \
-  -e SEED_STEP_GAP_MS="${SEED_STEP_GAP_MS:-}" \
+  -e OUT=/out/history.bin \
   node:24-alpine sh -c '
-    cp /seed/package.json /seed/package-lock.json /seed/*.mjs /work/ &&
-    cd /work && npm ci --no-audit --no-fund --loglevel=error && node seed.mjs'
+    mkdir -p /work && cp /seed/package.json /seed/package-lock.json /seed/*.mjs /work/ &&
+    cd /work && npm ci --prefer-offline --no-audit --no-fund --loglevel=error && node seed.mjs'
+
+if [ ! -f "${out}/history.bin" ]; then
+  exit 0 # already there
+fi
+docid="$(sed -E 's/.*"docid":"([^"]+)".*/\1/' "${out}/history.bin.json")"
+from_ms="$(sed -E 's/.*"accessesFrom":([0-9]+).*/\1/' "${out}/history.bin.json")"
+
+# 2. Users only see the history after the date of their access: date the
+#    accesses before the recorded meeting.
+docker compose exec -T backend python manage.py shell -c "
+import datetime
+from core.models import DocumentAccess
+DocumentAccess.objects.filter(document_id='${docid}').update(
+    created_at=datetime.datetime.fromtimestamp(${from_ms} / 1000, datetime.timezone.utc))
+"
+
+# 3. Store the history in yhub
+docker compose run --rm --no-deps \
+  -v "$(pwd)/seed:/seed:ro" -v "${out}:/out:ro" \
+  yhub node /seed/import.mjs /out/history.bin
+
+echo "seed: sample document at $(sed -E 's/.*"url":"([^"]+)".*/\1/' "${out}/history.bin.json")"

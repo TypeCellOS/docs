@@ -1,29 +1,21 @@
-// Seeds the dev instance with a document whose history has several versions by
-// several authors.
+// Prepares the sample document of the dev instance: step 1 of scripts/seed.sh.
 //
-// Every write goes through the routes a browser uses, as a real user: each user
-// signs in through the identity provider, the first user creates the document
-// and gives the others access, then the recorded history is written with
-// `PATCH /collaboration/ydoc` by the author of each version. yhub attributes and
-// timestamps the edits itself, so the script waits between versions for the
-// history panel to show them apart, and names each version with
-// `POST /collaboration/version`.
+// It signs in as the demo users (which creates them in Docs), lets the first
+// one create the document and give the others access, and builds the recorded
+// history offline: every edit attributed to its author at a past timestamp,
+// the way yhub records live edits (`insert`/`insertAt` in the contentmap). The
+// result is written to OUT for import.mjs, which stores it in yhub.
 //
-// It is idempotent: when the document already exists with content, it only
-// makes sure the accesses are there and prints the document url. Set
-// SEED_FORCE=1 to write a new copy.
+// Nothing waits in real time: the timestamps are in the data, not the clock.
 //
 // Environment:
-//   DOCS_URL            https://<docs host>
-//   SEED_USERS          user:password pairs, comma separated. The first one owns
-//                       the document. Authors take turns in this order.
-//   SEED_DATA           path to the recorded versions (JSON: [{name, steps}])
-//   SEED_TITLE          document title
-//   SEED_VERSION_GAP_S  pause between two versions, in seconds (default 330)
-//   SEED_STEP_GAP_MS    pause between two edits of a version (default 1500)
-//   SEED_FORCE          1 to write a new copy even if the document exists
+//   DOCS_URL    https://<docs host>
+//   SEED_USERS  demo users, user:password pairs, comma separated. The first one
+//               owns the document; the authors of the versions take turns.
+//   SEED_DATA   recorded versions (JSON: [{name, steps}])
+//   SEED_DATE   day of the recorded meeting, YYYY-MM-DD (default 2026-10-07)
+//   OUT         where to write the history to import
 import fs from 'node:fs';
-import { setTimeout as sleep } from 'node:timers/promises';
 
 import * as Y from '@y/y';
 import { decodeAny, encodeAny } from 'lib0/buffer';
@@ -32,10 +24,8 @@ import { FRAGMENT, createReplay } from './replay.mjs';
 
 const ORG = 'docs';
 const DOCS_URL = required('DOCS_URL').replace(/\/$/, '');
-const TITLE = process.env.SEED_TITLE || '07/10 meeting agenda (replay)';
-const VERSION_GAP_MS = Number(process.env.SEED_VERSION_GAP_S || 330) * 1000;
-const STEP_GAP_MS = Number(process.env.SEED_STEP_GAP_MS || 1500);
-const FORCE = process.env.SEED_FORCE === '1';
+const TITLE = process.env.SEED_TITLE || '07/10 meeting agenda (sample)';
+const DATE = process.env.SEED_DATE || '2026-10-07';
 
 function required(name) {
   const value = process.env[name];
@@ -46,7 +36,7 @@ function required(name) {
 }
 
 function log(message) {
-  console.log(`${new Date().toISOString()} ${message}`);
+  console.log(`seed: ${message}`);
 }
 
 /** A cookie jar per host, enough for the sign-in redirects. */
@@ -70,11 +60,7 @@ function createSession() {
         [...jar].map(([name, value]) => `${name}=${value}`).join('; '),
       );
     }
-    const response = await fetch(url, {
-      ...init,
-      headers,
-      redirect: 'manual',
-    });
+    const response = await fetch(url, { ...init, headers, redirect: 'manual' });
     for (const line of response.headers.getSetCookie()) {
       const [pair] = line.split(';');
       const index = pair.indexOf('=');
@@ -89,12 +75,16 @@ function createSession() {
     return response;
   }
 
-  /** Follows redirects, carrying the cookies of each host. */
   async function follow(url, init = {}) {
     let response = await request(url, init);
     let current = url;
-    for (let i = 0; i < 20 && [301, 302, 303, 307, 308].includes(response.status); i++) {
+    for (
+      let i = 0;
+      i < 20 && [301, 302, 303, 307, 308].includes(response.status);
+      i++
+    ) {
       current = new URL(response.headers.get('location'), current).toString();
+      await response.arrayBuffer();
       response = await request(current);
     }
     return { response, url: current };
@@ -103,9 +93,7 @@ function createSession() {
   return {
     request,
     follow,
-    cookie(url, name) {
-      return jarFor(url).get(name);
-    },
+    cookie: (url, name) => jarFor(url).get(name),
   };
 }
 
@@ -116,7 +104,9 @@ async function signIn(username, password) {
     `${DOCS_URL}/api/v1.0/authenticate/`,
   );
   const html = await response.text();
-  const action = html.match(/<form[^>]*id="kc-form-login"[^>]*action="([^"]+)"/)?.[1];
+  const action = html.match(
+    /<form[^>]*id="kc-form-login"[^>]*action="([^"]+)"/,
+  )?.[1];
   if (!action) {
     throw new Error(`No login form for ${username} at ${url} (${response.status})`);
   }
@@ -141,9 +131,7 @@ async function signIn(username, password) {
   if (!me.ok) {
     throw new Error(`Sign-in failed for ${username}: ${me.status}`);
   }
-  const user = await me.json();
-  log(`signed in as ${username} (${user.id})`);
-  return { username, user, api };
+  return { username, user: await me.json(), api };
 }
 
 async function json(response, what) {
@@ -153,119 +141,139 @@ async function json(response, what) {
   return response.json();
 }
 
-async function findDocument(owner) {
-  const response = await owner.api(
-    `/api/v1.0/documents/?is_creator_me=true&title=${encodeURIComponent(TITLE)}`,
-  );
-  const { results } = await json(response, 'Listing documents');
-  return results.find((doc) => doc.title === TITLE);
-}
-
-async function readFragmentLength(user, docId) {
-  const response = await user.api(
-    `/collaboration/ydoc/v1/${ORG}/${docId}?gc=true`,
-  );
+async function hasContent(user, docId) {
+  const response = await user.api(`/collaboration/ydoc/v1/${ORG}/${docId}?gc=true`);
   if (!response.ok) {
     throw new Error(`Reading the document failed: ${response.status}`);
   }
   const { doc } = decodeAny(new Uint8Array(await response.arrayBuffer()));
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, doc);
-  return ydoc.get(FRAGMENT).length;
+  return ydoc.get(FRAGMENT).length > 0;
 }
 
 async function ensureAccesses(owner, users, docId) {
-  const response = await owner.api(`/api/v1.0/documents/${docId}/accesses/`);
-  const existing = new Set(
-    (await json(response, 'Listing accesses')).map((access) => access.user?.id),
+  const listed = await json(
+    await owner.api(`/api/v1.0/documents/${docId}/accesses/`),
+    'Listing accesses',
   );
+  const existing = new Set(listed.map((access) => access.user?.id));
   for (const user of users) {
-    if (existing.has(user.user.id)) {
-      continue;
+    if (!existing.has(user.user.id)) {
+      await json(
+        await owner.api(`/api/v1.0/documents/${docId}/accesses/`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ user_id: user.user.id, role: 'editor' }),
+        }),
+        `Giving access to ${user.username}`,
+      );
     }
-    await json(
-      await owner.api(`/api/v1.0/documents/${docId}/accesses/`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ user_id: user.user.id, role: 'editor' }),
-      }),
-      `Giving access to ${user.username}`,
-    );
-    log(`gave ${user.username} editor access`);
   }
 }
 
-async function patch(user, docId, update) {
-  const response = await user.api(`/collaboration/ydoc/v1/${ORG}/${docId}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/octet-stream' },
-    body: encodeAny({ update }),
-  });
-  if (!response.ok) {
-    throw new Error(`PATCH as ${user.username} failed: ${response.status} ${await response.text()}`);
-  }
+/** "08:35:02–08:38:51 UTC" in a version name: when it was edited. */
+function timeRange(name) {
+  const [start, end] = name.match(/\d\d:\d\d:\d\d/g);
+  return [Date.parse(`${DATE}T${start}Z`), Date.parse(`${DATE}T${end}Z`)];
 }
 
-async function nameVersion(user, docId, name) {
-  const response = await user.api(`/collaboration/version/v1/${ORG}/${docId}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/octet-stream' },
-    body: encodeAny({ type: 'version:v1', name }),
-  });
-  if (!response.ok) {
-    throw new Error(`Naming "${name}" failed: ${response.status} ${await response.text()}`);
-  }
-}
-
-async function main() {
-  const versions = JSON.parse(fs.readFileSync(required('SEED_DATA'), 'utf8'));
-  const users = [];
-  for (const pair of required('SEED_USERS').split(',')) {
-    const index = pair.indexOf(':');
-    users.push(await signIn(pair.slice(0, index), pair.slice(index + 1)));
-  }
-  const [owner, ...others] = users;
-
-  let doc = FORCE ? undefined : await findDocument(owner);
-  if (doc && (await readFragmentLength(owner, doc.id)) > 0) {
-    await ensureAccesses(owner, others, doc.id);
-    log(`already seeded: ${DOCS_URL}/docs/${doc.id}/`);
-    return;
-  }
-  if (!doc) {
-    doc = await json(
-      await owner.api('/api/v1.0/documents/', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title: TITLE }),
-      }),
-      'Creating the document',
-    );
-    log(`created ${DOCS_URL}/docs/${doc.id}/`);
-  }
-  await ensureAccesses(owner, others, doc.id);
-  // History is only shown from the date of each access on: start after them.
-  await sleep(2000);
-
+/**
+ * Replays the versions into one gc:false document and attributes what each
+ * edit added to its author at its time, like Docs' fullMigrate does.
+ */
+function buildHistory(versions, authors) {
   const replay = createReplay();
-  await patch(owner, doc.id, replay.base());
-  for (const [i, version] of versions.entries()) {
-    const author = users[i % users.length];
-    if (i > 0) {
-      log(`waiting ${VERSION_GAP_MS / 1000}s before the next version`);
-      await sleep(VERSION_GAP_MS);
-    }
-    for (const [j, blocks] of version.steps.entries()) {
-      if (j > 0) {
-        await sleep(STEP_GAP_MS);
-      }
-      await patch(author, doc.id, replay.next(blocks));
-    }
-    await sleep(STEP_GAP_MS);
-    await nameVersion(author, doc.id, version.name);
-    log(`version ${i + 1}/${versions.length} "${version.name}" by ${author.username}: ${version.steps.length} edits`);
+  let seen = Y.createContentIds();
+  const contentmaps = [];
+
+  function attribute(by, at) {
+    const all = Y.createContentIdsFromDoc(replay.ydoc, true);
+    const fresh = Y.excludeContentIds(all, seen);
+    seen = all;
+    const attrs = (verb) => [
+      Y.createContentAttribute(verb, by),
+      Y.createContentAttribute(`${verb}At`, at),
+    ];
+    contentmaps.push(
+      Y.createContentMapFromContentIds(fresh, attrs('insert'), attrs('delete')),
+    );
   }
-  log(`done: ${DOCS_URL}/docs/${doc.id}/`);
+
+  const named = [];
+  versions.forEach((version, i) => {
+    const by = authors[i % authors.length];
+    const [start, end] = timeRange(version.name);
+    if (i === 0) {
+      replay.base();
+      attribute(by, start - 1000);
+    }
+    const count = version.steps.length;
+    let at = start;
+    version.steps.forEach((blocks, j) => {
+      replay.next(blocks);
+      at = count > 1 ? Math.round(start + ((end - start) * j) / (count - 1)) : start;
+      attribute(by, at);
+    });
+    named.push({ t: at, name: version.name, by });
+  });
+
+  const nongcDoc = Y.encodeStateAsUpdate(replay.ydoc);
+  const gc = new Y.Doc({ gc: true });
+  Y.applyUpdate(gc, nongcDoc);
+  return {
+    nongcDoc,
+    gcDoc: Y.encodeStateAsUpdate(gc),
+    contentmap: Y.encodeContentMap(Y.mergeContentMaps(contentmaps)),
+    contentids: Y.encodeContentIds(seen),
+    versions: named,
+    first: timeRange(versions[0].name)[0],
+  };
 }
 
-await main();
+const started = Date.now();
+const users = [];
+for (const pair of required('SEED_USERS').split(',')) {
+  const index = pair.indexOf(':');
+  users.push(await signIn(pair.slice(0, index), pair.slice(index + 1)));
+}
+const [owner, ...others] = users;
+
+const found = await json(
+  await owner.api(
+    `/api/v1.0/documents/?is_creator_me=true&title=${encodeURIComponent(TITLE)}`,
+  ),
+  'Listing documents',
+);
+let doc = found.results.find((d) => d.title === TITLE);
+if (doc && (await hasContent(owner, doc.id))) {
+  await ensureAccesses(owner, others, doc.id);
+  log(`already there: ${DOCS_URL}/docs/${doc.id}/`);
+  process.exit(0);
+}
+if (!doc) {
+  doc = await json(
+    await owner.api('/api/v1.0/documents/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: TITLE }),
+    }),
+    'Creating the document',
+  );
+}
+await ensureAccesses(owner, others, doc.id);
+
+const versions = JSON.parse(fs.readFileSync(required('SEED_DATA'), 'utf8'));
+const history = buildHistory(
+  versions,
+  users.map((u) => u.user.id),
+);
+fs.writeFileSync(
+  required('OUT'),
+  encodeAny({ org: ORG, docid: doc.id, ...history }),
+);
+fs.writeFileSync(
+  `${required('OUT')}.json`,
+  JSON.stringify({ docid: doc.id, url: `${DOCS_URL}/docs/${doc.id}/`, accessesFrom: history.first - 24 * 3600 * 1000 }),
+);
+log(`built ${versions.length} versions for ${DOCS_URL}/docs/${doc.id}/ in ${Date.now() - started} ms`);

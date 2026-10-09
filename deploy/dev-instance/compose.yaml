@@ -24,7 +24,6 @@ services:
       - DOCS_HOST=${DOCS_HOST}
       - KEYCLOAK_HOST=${KEYCLOAK_HOST}
       - S3_HOST=${S3_HOST}
-      - ACME_EMAIL=${ACME_EMAIL:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -117,8 +116,8 @@ services:
       - SEED_PASSWORD_CAROL=${SEED_PASSWORD_CAROL}
       - SEED_PASSWORD_DAVE=${SEED_PASSWORD_DAVE}
     volumes:
+      - keycloak:/opt/keycloak/data
       - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
-      - keycloak:/opt/keycloak/data/h2
 
   backend:
     # Upstream image of the commit this branch is based on: Docs' backend is not

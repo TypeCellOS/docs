@@ -19,7 +19,6 @@ if [ ! -f .env ]; then
 DOCS_HOST=${domain}
 KEYCLOAK_HOST=id.${domain}
 S3_HOST=s3.${domain}
-ACME_EMAIL=
 BUCKET_NAME=docs-media-storage
 
 # Set by deploy.sh

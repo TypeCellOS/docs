@@ -1,8 +1,5 @@
 # TLS for the three public host names, with certificates from Let's Encrypt.
 # The host names come from the .env file on the server.
-{
-	email {$ACME_EMAIL}
-}
 
 {$DOCS_HOST} {
 	encode zstd gzip

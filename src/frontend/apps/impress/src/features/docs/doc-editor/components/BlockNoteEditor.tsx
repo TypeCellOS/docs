@@ -167,7 +167,9 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
   const historyDebugSettings = useRef<HistoryDebugSettings | undefined>(
     undefined,
   );
-  // The editor reads these once, so changing them recreates it.
+  // BlockNote reads this object each time it shows a version, so a change
+  // applies without creating the editor again (which would lose the selection).
+  const [experimentalOptions] = useState<ExperimentalVersionDiffs>(() => ({}));
   const [experimentalDiffs, setExperimentalDiffs] =
     useState<ExperimentalVersionDiffs>({});
   const historyDefaults = {
@@ -291,7 +293,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
           return cursorElement;
         },
         showCursorLabels: showCursorLabels as 'always' | 'activity',
-        experimental: experimentalDiffs,
+        experimental: experimentalOptions,
       },
       dropCursor: {
         color: 'var(--c--contextuals--background--semantic--brand--tertiary)',
@@ -389,7 +391,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
       aiExtension,
       cursorName,
       docUserStore,
-      experimentalDiffs,
+      experimentalOptions,
       langLocalesBN,
       langLocalesBNMultiColumn,
       langLocalesBNAI,
@@ -475,7 +477,20 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
               initialSettings: historyDebugSettings.current ?? historyDefaults,
               canCreate: !!doc.abilities.partial_update,
               experimental: experimentalDiffs,
-              onExperimentalChange: setExperimentalDiffs,
+              onExperimentalChange: (experimental) => {
+                experimentalOptions.versionDiffFixes =
+                  experimental.versionDiffFixes;
+                setExperimentalDiffs(experimental);
+                // Show the selected versions again with the new setting.
+                const mode =
+                  editor.getExtension<VersioningController>('versioning');
+                const state = mode?.store.state;
+                if (mode && state?.mode === 'versions') {
+                  void mode.select(state.displayed, {
+                    compareTo: state.compareTo,
+                  });
+                }
+              },
               onApply: async (settings) => {
                 historyDebugSettings.current = settings;
                 const mode =

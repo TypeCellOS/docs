@@ -14,10 +14,11 @@ const history = decodeAny(new Uint8Array(fs.readFileSync(process.argv[2])));
 const docRef = { org: history.org, docid: history.docid, branch: 'main' };
 const persistence = await createPersistence(process.env.POSTGRES, []);
 
-// Only an empty document gets the content: a second clock-0 row would
-// attribute the same content twice.
-const current = await persistence.retrieveDoc(docRef, {});
-if (current.lastClock === '0') {
+// Only an empty document gets the content: a second row would attribute the
+// same content twice. `lastClock` cannot tell, it stays '0' after the clock-0
+// row this import writes, so look for stored updates instead.
+const current = await persistence.retrieveDoc(docRef, { gc: true });
+if (current.gcDoc.length === 0 && current.lastClock === '0') {
   await persistence.store(docRef, {
     lastClock: '0',
     gcDoc: history.gcDoc,

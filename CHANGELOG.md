@@ -83,7 +83,7 @@ and this project adheres to
 ### Changed
 
 - 🛂(backend) let users allowed to comment list each other's accesses #2447
-- ⬆️(frontend) update BlockNote preview packages to d7d51b2097
+- ⬆️(frontend) update BlockNote preview packages to 3b7d4ec140
 - ♻️(frontend) restore bounded editor history through native yhub rollback
 - ♻️(frontend) use standalone YHub version storage and history extension
 - ♻️(frontend) migrate the history panel to RenderInPortalElement

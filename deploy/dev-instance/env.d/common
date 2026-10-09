@@ -1,0 +1,10 @@
+# Values come from the .env file on the server (scripts/init-env.sh).
+DOCS_HOST=${DOCS_HOST}
+KEYCLOAK_HOST=${KEYCLOAK_HOST}
+S3_HOST=${S3_HOST}
+BACKEND_HOST=backend
+FRONTEND_HOST=frontend
+YPROVIDER_HOST=y-provider
+YHUB_HOST=yhub
+BUCKET_NAME=${BUCKET_NAME}
+REALM_NAME=docs

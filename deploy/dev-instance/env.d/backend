@@ -1,0 +1,49 @@
+# Django
+DJANGO_ALLOWED_HOSTS=${DOCS_HOST}
+DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+DJANGO_SETTINGS_MODULE=impress.settings
+DJANGO_CONFIGURATION=Production
+DJANGO_CSRF_TRUSTED_ORIGINS=https://${DOCS_HOST}
+
+LOGGING_LEVEL_HANDLERS_CONSOLE=INFO
+LOGGING_LEVEL_LOGGERS_ROOT=INFO
+LOGGING_LEVEL_LOGGERS_APP=INFO
+
+PYTHONPATH=/app
+
+# Signs the tokens the backend presents to yhub and to y-provider
+JWT_PRIVATE_KEY_FILE=/keys/private.pem
+
+# Collaboration server
+YHUB_API_BASE_URL=http://yhub:3002
+COLLABORATION_API_URL=http://yhub:3002/collaboration
+COLLABORATION_WS_URL=wss://${DOCS_HOST}/collaboration/ws/v1/docs
+
+# No mail server on the dev instance
+DJANGO_EMAIL_BRAND_NAME="Docs dev"
+DJANGO_EMAIL_URL_APP=https://${DOCS_HOST}
+
+# Media
+AWS_S3_ENDPOINT_URL=https://${S3_HOST}
+AWS_S3_ACCESS_KEY_ID=${S3_ACCESS_KEY}
+AWS_S3_SECRET_ACCESS_KEY=${S3_SECRET_KEY}
+AWS_STORAGE_BUCKET_NAME=${BUCKET_NAME}
+MEDIA_BASE_URL=https://${DOCS_HOST}
+
+# OIDC (Keycloak on the same server, realm keycloak/realm.json)
+OIDC_OP_JWKS_ENDPOINT=https://${KEYCLOAK_HOST}/realms/docs/protocol/openid-connect/certs
+OIDC_OP_AUTHORIZATION_ENDPOINT=https://${KEYCLOAK_HOST}/realms/docs/protocol/openid-connect/auth
+OIDC_OP_TOKEN_ENDPOINT=https://${KEYCLOAK_HOST}/realms/docs/protocol/openid-connect/token
+OIDC_OP_USER_ENDPOINT=https://${KEYCLOAK_HOST}/realms/docs/protocol/openid-connect/userinfo
+OIDC_OP_LOGOUT_ENDPOINT=https://${KEYCLOAK_HOST}/realms/docs/protocol/openid-connect/logout
+OIDC_RP_CLIENT_ID=docs
+OIDC_RP_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+OIDC_RP_SIGN_ALGO=RS256
+OIDC_RP_SCOPES="openid email profile"
+OIDC_USERINFO_FULLNAME_FIELDS=given_name,family_name
+OIDC_USERINFO_SHORTNAME_FIELD=given_name
+
+LOGIN_REDIRECT_URL=https://${DOCS_HOST}
+LOGIN_REDIRECT_URL_FAILURE=https://${DOCS_HOST}
+LOGOUT_REDIRECT_URL=https://${DOCS_HOST}
+OIDC_REDIRECT_ALLOWED_HOSTS=["https://${DOCS_HOST}"]

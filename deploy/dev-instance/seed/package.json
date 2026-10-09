@@ -1,0 +1,13 @@
+{
+  "name": "docs-dev-instance-seed",
+  "private": true,
+  "type": "module",
+  "description": "Builds the sample document of the dev instance (scripts/seed.sh).",
+  "dependencies": {
+    "@blocknote/core": "https://pkg.pr.new/TypeCellOS/BlockNote/@blocknote/core@bb192fe8fc",
+    "@y/prosemirror": "2.0.0-14",
+    "@y/protocols": "1.0.6-rc.1",
+    "@y/y": "14.0.0-rc.28",
+    "lib0": "1.0.0-rc.36"
+  }
+}

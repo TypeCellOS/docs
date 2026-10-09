@@ -1,0 +1,139 @@
+name: Dev instance
+run-name: Dev instance (${{ inputs.ref || github.ref_name }})
+
+# Builds the images that differ from upstream and deploys them to the dev
+# server (deploy/dev-instance). A merge to the `dev` branch ships it.
+#
+# From the Actions tab, "Run workflow" can also deploy another branch, tag or
+# commit (`ref`), for example a pull request that is not merged yet. There is
+# only one server: the last deploy wins, and the next merge to `dev` replaces
+# it. The ref must contain deploy/dev-instance.
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit to deploy. The last deploy wins: the next merge to dev replaces it."
+        type: string
+        default: dev
+
+permissions:
+  contents: read
+
+# Never cancel a deploy halfway; queue the next one instead.
+concurrency:
+  group: dev-instance
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Commit to deploy
+        id: sha
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Commit: $(git log -1 --format='%h %s')" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: frontend
+            file: src/frontend/Dockerfile
+            target: frontend-production
+          - name: yhub
+            file: src/yhub-server/Dockerfile
+            target: yhub
+          - name: y-provider
+            file: src/frontend/servers/y-provider/Dockerfile
+            target: y-provider
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          build-args: |
+            DOCKER_USER=1001:127
+            PUBLISH_AS_MIT=false
+          push: true
+          provenance: false
+          tags: ${{ steps.image.outputs.name }}:${{ needs.resolve.outputs.sha }}
+          cache-from: type=gha,scope=dev-${{ matrix.name }}
+          cache-to: type=gha,scope=dev-${{ matrix.name }},mode=max
+
+  deploy:
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host dev-instance
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            StrictHostKeyChecking yes
+            ServerAliveInterval 30
+          EOF
+      - name: Copy the deploy files
+        run: |
+          cp docker/files/production/etc/nginx/conf.d/default.conf.template deploy/dev-instance/
+          tar -C deploy/dev-instance --exclude=node_modules -czf - . \
+            | ssh dev-instance 'mkdir -p /opt/docs && tar -C /opt/docs -xzf -'
+      - name: Deploy
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | ssh dev-instance \
+            "docker login ghcr.io -u '${{ github.actor }}' --password-stdin >/dev/null \
+             && trap 'docker logout ghcr.io >/dev/null' EXIT \
+             && /opt/docs/scripts/deploy.sh '${{ needs.resolve.outputs.sha }}'"
+      - name: Check the instance answers
+        run: |
+          host=$(ssh dev-instance "grep '^DOCS_HOST=' /opt/docs/.env | cut -d= -f2")
+          curl -fsS --retry 10 --retry-delay 6 --retry-all-errors -o /dev/null "https://$host/"
+          curl -fsS --retry 10 --retry-delay 6 --retry-all-errors "https://$host/api/v1.0/config/" -o /dev/null
+          echo "Deployed to https://$host/" >> "$GITHUB_STEP_SUMMARY"

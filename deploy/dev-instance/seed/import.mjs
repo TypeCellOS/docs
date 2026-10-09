@@ -2,7 +2,7 @@
 //
 // It runs in the yhub image, with the @y/hub of the deployed server, and writes
 // the document the way Docs' fullMigrate does: one persisted row at clock 0,
-// and the named versions. It refuses a document that yhub already holds.
+// and the named versions. It only adds what yhub does not hold yet.
 //
 // Usage: node import.mjs <history file>
 import fs from 'node:fs';
@@ -14,10 +14,10 @@ const history = decodeAny(new Uint8Array(fs.readFileSync(process.argv[2])));
 const docRef = { org: history.org, docid: history.docid, branch: 'main' };
 const persistence = await createPersistence(process.env.POSTGRES, []);
 
+// Only an empty document gets the content: a second clock-0 row would
+// attribute the same content twice.
 const current = await persistence.retrieveDoc(docRef, {});
-if (current.lastClock !== '0') {
-  console.log(`import: yhub already holds ${docRef.docid}, nothing to do`);
-} else {
+if (current.lastClock === '0') {
   await persistence.store(docRef, {
     lastClock: '0',
     gcDoc: history.gcDoc,
@@ -25,17 +25,25 @@ if (current.lastClock !== '0') {
     contentmap: history.contentmap,
     contentids: history.contentids,
   });
-  for (const version of history.versions) {
-    await persistence.storeVersion(docRef, {
-      t: version.t,
-      name: version.name,
-      // what the version API stores for a version with no custom data
-      custom: encodeAny(null),
-      published: false,
-      at: version.t,
-      by: version.by,
-    });
-  }
-  console.log(`import: stored ${history.versions.length} versions of ${docRef.docid}`);
+  console.log(`import: stored the history of ${docRef.docid}`);
+} else {
+  console.log(`import: yhub already holds the content of ${docRef.docid}`);
 }
+// The names are keyed on their time, and an existing one is kept.
+let named = 0;
+for (const version of history.versions) {
+  const stored = await persistence.storeVersion(docRef, {
+    t: version.t,
+    name: version.name,
+    // what the version API stores for a version with no custom data
+    custom: encodeAny(null),
+    published: false,
+    at: version.t,
+    by: version.by,
+  });
+  if (stored != null) {
+    named++;
+  }
+}
+console.log(`import: named ${named} new versions of ${history.versions.length}`);
 process.exit(0);

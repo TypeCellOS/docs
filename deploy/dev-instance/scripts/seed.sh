@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Puts the sample document on the instance: "07/10 meeting agenda (sample)",
 # owned by alice, with 15 named versions by alice, bob, carol and dave.
-# deploy.sh runs it on every deploy. It does nothing when the document is
-# already there, and it takes about a minute at most: the history is built
-# offline with its past timestamps, then stored in yhub.
+# deploy.sh runs it on every deploy. It only adds what is missing, so it
+# changes nothing when the document is complete, and it takes well under a
+# minute: the history is built offline with its past timestamps, then stored
+# in yhub.
 #
 #   ./scripts/seed.sh [path to versions JSON]   (default: seed-data/meetingVersions.json)
 set -euo pipefail
@@ -34,9 +35,6 @@ docker run --rm \
     mkdir -p /work && cp /seed/package.json /seed/package-lock.json /seed/*.mjs /work/ &&
     cd /work && npm ci --prefer-offline --no-audit --no-fund --loglevel=error && node seed.mjs'
 
-if [ ! -f "${out}/history.bin" ]; then
-  exit 0 # already there
-fi
 docid="$(sed -E 's/.*"docid":"([^"]+)".*/\1/' "${out}/history.bin.json")"
 from_ms="$(sed -E 's/.*"accessesFrom":([0-9]+).*/\1/' "${out}/history.bin.json")"
 

@@ -111,6 +111,50 @@ describe('the history a user may read', () => {
   });
 });
 
+describe('named versions', () => {
+  it('allows the sidebar to include version metadata in activity reads', () => {
+    for (const who of [reader, editor]) {
+      expect(
+        grants(who, { history: { from: ACCESS_SINCE, version: '-r--' } }),
+      ).toBe(true);
+      expect(grants(who, { endpoint: { version: '-r--' } })).toBe(true);
+    }
+  });
+
+  it('lets only editors create, rename or remove version metadata', () => {
+    for (const version of ['c---', '--u-', '---d'] as const) {
+      expect(
+        grants(editor, { history: { from: ACCESS_SINCE, version } }),
+      ).toBe(true);
+      expect(grants(editor, { endpoint: { version } })).toBe(true);
+      expect(
+        grants(reader, { history: { from: ACCESS_SINCE, version } }),
+      ).toBe(false);
+      expect(grants(reader, { endpoint: { version } })).toBe(false);
+    }
+  });
+
+  it('never widens history access or allows publishing', () => {
+    for (const who of [reader, editor]) {
+      expect(
+        grants(who, { history: { from: ACCESS_SINCE - 1, version: '-r--' } }),
+      ).toBe(false);
+      expect(
+        grants(who, { history: { from: ACCESS_SINCE, publish: true } }),
+      ).toBe(false);
+    }
+    expect(
+      grants(editor, { history: { from: ACCESS_SINCE - 1, version: 'crud' } }),
+    ).toBe(false);
+    for (const who of [linkReader, linkEditor]) {
+      expect(
+        grants(who, { history: { from: ACCESS_SINCE, version: '-r--' } }),
+      ).toBe(false);
+      expect(grants(who, { endpoint: { version: 'crud' } })).toBe(false);
+    }
+  });
+});
+
 describe('rollback', () => {
   it('lets an editor undo a window inside its own ray', () => {
     expect(

@@ -17,6 +17,7 @@ import { Box } from '@/components/Box';
 import { Text } from '@/components/Text';
 import { useConfig } from '@/core/config/api';
 import { useEditorStore } from '@/docs/doc-editor/stores/useEditorStore';
+import { useVersioningSidebarStore } from '@/docs/doc-editor/stores/useVersioningSidebarStore';
 import { getWordCount } from '@/docs/doc-editor/utils';
 import { printDocumentWithStyles } from '@/docs/doc-export/utils_print';
 import { useDuplicatedDoc } from '@/docs/doc-management/components/ConfirmationDuplicateModal';
@@ -79,14 +80,6 @@ const ModalRemoveDoc = dynamic(
     import('@/docs/doc-management/components/ModalRemoveDoc').then((mod) => ({
       default: mod.ModalRemoveDoc,
     })),
-  { ssr: false },
-);
-
-const ModalSelectVersion = dynamic(
-  () =>
-    import('@/docs/doc-versioning/components/ModalSelectVersion').then(
-      (mod) => ({ default: mod.ModalSelectVersion }),
-    ),
   { ssr: false },
 );
 
@@ -154,7 +147,6 @@ const DocToolBoxComponent = ({
   const [isModalRemoveOpen, setIsModalRemoveOpen] = useState(false);
   const [isModalExportOpen, setIsModalExportOpen] = useState(false);
   const [isModalShareOpen, setIsModalShareOpen] = useState(false);
-  const [isModalHistoryOpen, setIsModalHistoryOpen] = useState(false);
   const [isModalLeaveOpen, setIsModalLeaveOpen] = useState(false);
   const [isModalMoveOpen, setIsModalMoveOpen] = useState(false);
   const { onClick: onButtonClick, ...buttonPropsLeft } = buttonProps || {};
@@ -165,6 +157,7 @@ const DocToolBoxComponent = ({
     conf?.DUPLICATE_CHILDREN_FEATURE_ENABLED &&
     doc.numchild
   );
+  const { setIsOpen: setIsVersioningSidebarOpen } = useVersioningSidebarStore();
 
   const editor = useEditorStore((state) => state.editor);
   const wordCountLabel = useMemo(() => {
@@ -365,7 +358,7 @@ const DocToolBoxComponent = ({
       icon: <HistoryIcon width={18} height={18} aria-hidden="true" />,
       isDisabled: !doc.abilities.versions_list,
       callback: () => {
-        setIsModalHistoryOpen(true);
+        setIsVersioningSidebarOpen(true);
       },
       isHidden: isMobile || !doc.abilities.versions_list || !isCurrentDoc,
       showSeparator: true,
@@ -477,15 +470,6 @@ const DocToolBoxComponent = ({
           }}
           doc={doc}
           treeContext={treeContext}
-        />
-      )}
-      {isModalHistoryOpen && (
-        <ModalSelectVersion
-          onClose={() => {
-            setIsModalHistoryOpen(false);
-            restoreFocus();
-          }}
-          doc={doc}
         />
       )}
       {isModalShareOpen && (

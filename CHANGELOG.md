@@ -8,12 +8,18 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) add local history grouping controls and test checkpoints
 - 👷(ci) lint, typecheck, build and test the collaboration server (yhub)
 - 👷(ci) check the load-test tooling: swarm, canary, k6 and dashboards
 - 👷(ci) cancel the superseded runs of a pull request
 - ✨(backend) add mention endpoint with cooldown-limited email
   notification #2447
 - 🚩(setting) add feature flag on Duplicate with Children #2721
+- ✨(frontend) export PDF with Typst, including math and diagrams
+- ✨(frontend) show yhub version history in the BlockNote sidebar
+- ✨(frontend) provide consistent author and cursor colors in BlockNote
+- 💄(frontend) share deterministic user colors across cursors and avatars
+- 💄(frontend) derive readable author colors with matching pastel highlights
 - 💄(frontend) redesign 404 error standalone page #2696
 - 💄(frontend) redesign 403 access denied page #2720
 - ✨(frontend) duplicate with subdocuments #2584
@@ -76,6 +82,11 @@ and this project adheres to
 ### Changed
 
 - 🛂(backend) let users allowed to comment list each other's accesses #2447
+- ⬆️(frontend) update BlockNote preview packages to 8d235ba9eb
+- ♻️(frontend) restore bounded editor history through native yhub rollback
+- ♻️(frontend) use standalone YHub version storage and history extension
+- ♻️(frontend) migrate the history panel to RenderInPortalElement
+- ⬆️(collaboration) upgrade yhub to 0.9.1 with matching Yjs
 - ♻️(collaboration) migrate the collaboration server from hocuspocus to yhub
 - 💥(y-provider) y-provider becomes converter-only
 - 💥(backend) move the resource server JWKS from `/api/{version}/jwks` to
@@ -87,11 +98,14 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) fetch named versions fresh after deleting one
 - 🐛(documentation) fix minio port and keycloak realm in the k8s guide #2751
 - 🐛(collaboration) bound the calls yhub makes to the backend with a timeout,
   `YHUB_BACKEND_REQUEST_TIMEOUT_MS`, 5s by default #2753
 - 🐛(frontend) cache hashed `/_next/static/` assets and revalidate HTML #2770
 - 🐛(backend) compensate document duplication failures #2755
+- 🐛(collaboration) restore editor versions without exposing full history
+- 🐛(collaboration) grant bounded named-version access for the history sidebar
 - 🐛(frontend) open search results in a new tab with ctrl/cmd+click #2719
 - 🐛(docker) pull minio images from pgsty
 - 🐛(backend) retry the duplicate of a document on a tree path collision

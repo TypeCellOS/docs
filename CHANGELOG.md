@@ -9,6 +9,7 @@ and this project adheres to
 ### Added
 
 - ✨(frontend) add local history grouping controls and test checkpoints
+- ✨(frontend) add a debug choice for experimental version diff fixes
 - 👷(ci) lint, typecheck, build and test the collaboration server (yhub)
 - 👷(ci) check the load-test tooling: swarm, canary, k6 and dashboards
 - 👷(ci) cancel the superseded runs of a pull request
@@ -82,7 +83,7 @@ and this project adheres to
 ### Changed
 
 - 🛂(backend) let users allowed to comment list each other's accesses #2447
-- ⬆️(frontend) update BlockNote preview packages to 8d235ba9eb
+- ⬆️(frontend) update BlockNote preview packages to bb192fe8fc
 - ♻️(frontend) restore bounded editor history through native yhub rollback
 - ♻️(frontend) use standalone YHub version storage and history extension
 - ♻️(frontend) migrate the history panel to RenderInPortalElement

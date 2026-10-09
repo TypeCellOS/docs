@@ -9,7 +9,11 @@ import { CommentsExtension } from '@blocknote/core/comments';
 import { type VersioningController } from '@blocknote/core/extensions';
 import '@blocknote/core/fonts/inter.css';
 import * as localesBN from '@blocknote/core/locales';
-import { YVersioningExtension, withCollaboration } from '@blocknote/core/y';
+import {
+  type ExperimentalVersionDiffs,
+  YVersioningExtension,
+  withCollaboration,
+} from '@blocknote/core/y';
 import {
   createReactDiagramBlockSpec,
   locales as diagramLocales,
@@ -30,7 +34,7 @@ import {
 import { FindAndReplace } from '@tiptap/extension-find-and-replace';
 import { WebsocketProvider } from '@y/websocket';
 import * as Y from '@y/y';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -163,6 +167,9 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
   const historyDebugSettings = useRef<HistoryDebugSettings | undefined>(
     undefined,
   );
+  // The editor reads these once, so changing them recreates it.
+  const [experimentalDiffs, setExperimentalDiffs] =
+    useState<ExperimentalVersionDiffs>({});
   const historyDefaults = {
     groupMaxGap: versionGranularityMs,
     groupMaxDuration: versionGranularityMs,
@@ -284,6 +291,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
           return cursorElement;
         },
         showCursorLabels: showCursorLabels as 'always' | 'activity',
+        experimental: experimentalDiffs,
       },
       dropCursor: {
         color: 'var(--c--contextuals--background--semantic--brand--tertiary)',
@@ -381,6 +389,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
       aiExtension,
       cursorName,
       docUserStore,
+      experimentalDiffs,
       langLocalesBN,
       langLocalesBNMultiColumn,
       langLocalesBNAI,
@@ -465,6 +474,8 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
               defaults: historyDefaults,
               initialSettings: historyDebugSettings.current ?? historyDefaults,
               canCreate: !!doc.abilities.partial_update,
+              experimental: experimentalDiffs,
+              onExperimentalChange: setExperimentalDiffs,
               onApply: async (settings) => {
                 historyDebugSettings.current = settings;
                 const mode =

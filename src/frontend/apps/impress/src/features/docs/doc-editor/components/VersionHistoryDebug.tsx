@@ -1,4 +1,8 @@
 import { type VersionOperationResult } from '@blocknote/core/extensions';
+import {
+  type ExperimentalVersionDiffs,
+  type VersionDiffFixes,
+} from '@blocknote/core/y';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,6 +23,8 @@ interface Props {
   defaults: HistoryDebugSettings;
   initialSettings: HistoryDebugSettings;
   canCreate: boolean;
+  experimental: ExperimentalVersionDiffs;
+  onExperimentalChange: (experimental: ExperimentalVersionDiffs) => void;
   onDismiss: () => void;
   onApply: (settings: HistoryDebugSettings) => Promise<VersionOperationResult>;
   onCreate: () => Promise<VersionOperationResult>;
@@ -29,6 +35,8 @@ export const VersionHistoryDebug = ({
   defaults,
   initialSettings,
   canCreate,
+  experimental,
+  onExperimentalChange,
   onDismiss,
   onApply,
   onCreate,
@@ -38,6 +46,20 @@ export const VersionHistoryDebug = ({
   const [unit, setUnit] = useState(60_000);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const diffFixOptions: {
+    value: VersionDiffFixes | undefined;
+    label: string;
+  }[] = [
+    { value: undefined, label: t('Default') },
+    {
+      value: 'implicitDeleteAttribution',
+      label: t('Implicit delete attribution'),
+    },
+    {
+      value: 'implicitDeleteAttributionAndRecreatedBlocks',
+      label: t('+ re-created blocks'),
+    },
+  ];
   const valid =
     Number.isSafeInteger(settings.groupMaxGap) &&
     settings.groupMaxGap > 0 &&
@@ -184,6 +206,11 @@ export const VersionHistoryDebug = ({
           color: var(--c--contextuals--content--semantic--neutral--secondary);
         }
         .debug-checkpoint small { margin-top: 8px; }
+        .debug-experimental {
+          border-top: 1px solid var(--c--contextuals--border--surface--primary);
+          padding-top: 14px;
+        }
+        .debug-experimental { display: flex; flex-direction: column; gap: 6px; }
         [role='status']:not(:empty) {
           margin-top: 12px;
           padding: 8px 10px;
@@ -332,6 +359,32 @@ export const VersionHistoryDebug = ({
             </button>
             <small>
               {t('Local settings. Test versions are saved to the document.')}
+            </small>
+          </div>
+          <div className="debug-experimental">
+            <label htmlFor="history-debug-diff-fixes">
+              {t('Version diff fixes')}
+            </label>
+            <select
+              id="history-debug-diff-fixes"
+              value={experimental.versionDiffFixes ?? ''}
+              onChange={(event) =>
+                onExperimentalChange({
+                  ...experimental,
+                  versionDiffFixes: diffFixOptions.find(
+                    ({ value }) => (value ?? '') === event.target.value,
+                  )?.value,
+                })
+              }
+            >
+              {diffFixOptions.map(({ value, label }) => (
+                <option key={label} value={value ?? ''}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <small>
+              {t('Experimental. Changing this reloads the editor.')}
             </small>
           </div>
         </Box>

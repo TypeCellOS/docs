@@ -246,12 +246,11 @@ const found = await json(
   'Listing documents',
 );
 let doc = found.results.find((d) => d.title === TITLE);
-if (doc && (await hasContent(owner, doc.id))) {
-  await ensureAccesses(owner, others, doc.id);
-  log(`already there: ${DOCS_URL}/docs/${doc.id}/`);
-  process.exit(0);
-}
-if (!doc) {
+// An existing document still goes through the import, which only adds what is
+// missing: a deploy that stopped after the content still gets its versions.
+if (doc) {
+  log(`found ${DOCS_URL}/docs/${doc.id}/ (content: ${await hasContent(owner, doc.id)})`);
+} else {
   doc = await json(
     await owner.api('/api/v1.0/documents/', {
       method: 'POST',

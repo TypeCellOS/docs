@@ -1,0 +1,208 @@
+# Dev instance of Docs on one server, deployed by
+# .github/workflows/dev-instance.yml. It follows the production example in
+# documentation/examples/compose/compose.yaml, with the identity provider, the
+# object storage and the TLS proxy on the same machine.
+#
+# Every value that is specific to the server (host names, passwords, keys) is
+# in the `.env` file next to this one on the server, which
+# scripts/init-env.sh generates. Nothing secret is in the repository.
+#
+# Only caddy publishes ports (80 and 443). Docker bypasses the host firewall
+# for published ports, so do not publish ports on other services.
+
+name: docs
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - DOCS_HOST=${DOCS_HOST}
+      - KEYCLOAK_HOST=${KEYCLOAK_HOST}
+      - S3_HOST=${S3_HOST}
+      - ACME_EMAIL=${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  postgresql:
+    image: postgres:16
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 1s
+      timeout: 2s
+      retries: 300
+    env_file:
+      - env.d/postgresql
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgresql:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8
+    restart: unless-stopped
+
+  # Holds the updates that no yhub worker has persisted yet: a store, not a
+  # cache. Hence the append-only file.
+  yhub-valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--maxmemory-policy", "volatile-lru",
+              "--appendonly", "yes", "--appendfsync", "everysec"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 60
+    volumes:
+      - yhub-valkey:/data
+
+  minio:
+    image: pgsty/silo
+    restart: unless-stopped
+    command: server /data
+    environment:
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_KEY}
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 20s
+      retries: 150
+    volumes:
+      - minio:/data
+
+  # One-shot, run by deploy.sh
+  createbuckets:
+    image: pgsty/mc
+    profiles: ["setup"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - BUCKET_NAME=${BUCKET_NAME:-docs-media-storage}
+    entrypoint: >
+      sh -c "
+      mc alias set docs http://minio:9000 $${S3_ACCESS_KEY} $${S3_SECRET_KEY} &&
+      mc mb --ignore-existing docs/$${BUCKET_NAME} &&
+      mc version enable docs/$${BUCKET_NAME}"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7
+    restart: unless-stopped
+    # Development mode with the embedded database: enough for a dev instance.
+    # The realm and its users are imported on the first start only.
+    command: ["start-dev", "--import-realm"]
+    environment:
+      - KC_HOSTNAME=https://${KEYCLOAK_HOST}
+      - KC_PROXY_HEADERS=xforwarded
+      - KC_HTTP_ENABLED=true
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+      # Read by keycloak/realm.json
+      - DOCS_HOST=${DOCS_HOST}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      - SEED_PASSWORD_ADMIN=${SEED_PASSWORD_ADMIN}
+      - SEED_PASSWORD_ALICE=${SEED_PASSWORD_ALICE}
+      - SEED_PASSWORD_BOB=${SEED_PASSWORD_BOB}
+      - SEED_PASSWORD_CAROL=${SEED_PASSWORD_CAROL}
+      - SEED_PASSWORD_DAVE=${SEED_PASSWORD_DAVE}
+    volumes:
+      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+      - keycloak:/opt/keycloak/data/h2
+
+  backend:
+    # Upstream image of the commit this branch is based on: Docs' backend is not
+    # changed here. Update it when merging a newer upstream main.
+    image: ${BACKEND_IMAGE:-lasuite/impress-backend:main@sha256:525fbb920e7ad8de69ccfde490030db608d2f11693cbcc6af81e681850700558}
+    user: "1000"
+    restart: unless-stopped
+    environment:
+      - DJANGO_CONFIGURATION=Production
+    env_file:
+      - env.d/common
+      - env.d/backend
+      - env.d/yprovider
+      - env.d/postgresql
+    volumes:
+      - ./keys/private.pem:/keys/private.pem:ro
+    healthcheck:
+      test: ["CMD", "python", "manage.py", "check"]
+      interval: 15s
+      timeout: 30s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      postgresql:
+        condition: service_healthy
+        restart: true
+      redis:
+        condition: service_started
+
+  # The collaboration server. Run `yarn init-db` before it starts (deploy.sh
+  # does it on every deploy, it is idempotent).
+  yhub:
+    image: ${IMAGE_REGISTRY:-ghcr.io/typecellos/docs}/yhub:${IMAGE_TAG}
+    user: "1000"
+    restart: unless-stopped
+    env_file:
+      - env.d/common
+      - env.d/yhub
+    volumes:
+      - ./keys/yhub-private.pem:/keys/yhub-private.pem:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3002/collaboration/ready/v1').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      postgresql:
+        condition: service_healthy
+        restart: true
+      yhub-valkey:
+        condition: service_healthy
+
+  # The conversion service (markdown, html, pdf, docx).
+  y-provider:
+    image: ${IMAGE_REGISTRY:-ghcr.io/typecellos/docs}/y-provider:${IMAGE_TAG}
+    user: "1000"
+    restart: unless-stopped
+    env_file:
+      - env.d/common
+      - env.d/yprovider
+
+  # Serves the editor and routes everything else, on the same origin.
+  frontend:
+    image: ${IMAGE_REGISTRY:-ghcr.io/typecellos/docs}/frontend:${IMAGE_TAG}
+    user: "101"
+    restart: unless-stopped
+    entrypoint:
+      - /docker-entrypoint.sh
+    command: ["nginx", "-g", "daemon off;"]
+    env_file:
+      - env.d/common
+    volumes:
+      - ./default.conf.template:/etc/nginx/templates/docs.conf.template:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      yhub:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgresql:
+  yhub-valkey:
+  minio:
+  keycloak:

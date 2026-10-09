@@ -1,0 +1,20 @@
+# TLS for the three public host names, with certificates from Let's Encrypt.
+# The host names come from the .env file on the server.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOCS_HOST} {
+	encode zstd gzip
+	reverse_proxy frontend:8083
+}
+
+{$KEYCLOAK_HOST} {
+	reverse_proxy keycloak:8080
+}
+
+# The media bucket. Access is signed by the backend (see /media-auth in the
+# nginx template), the bucket itself is private.
+{$S3_HOST} {
+	reverse_proxy minio:9000
+}

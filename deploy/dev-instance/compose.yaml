@@ -123,6 +123,10 @@ services:
     restart: unless-stopped
     environment:
       - DJANGO_CONFIGURATION=Production
+      # yhub checks the access of each history request with the backend. The
+      # default of 50/minute per user made the history panel fail with 503.
+      - API_DOCUMENT_ACCESS_THROTTLE_RATE=1000/minute
+      - API_DOCUMENT_THROTTLE_RATE=1000/minute
     env_file:
       - env.d/common
       - env.d/backend

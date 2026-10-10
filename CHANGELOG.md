@@ -101,6 +101,7 @@ and this project adheres to
 
 - 🐛(frontend) save edits made while the http fallback carries the document
 - ✅(e2e) find comment menus in their portal and accept the Typst PDF language
+- ✅(e2e) skip the version dialog tests, replaced by the BlockNote sidebar
 - 🐛(frontend) fetch named versions fresh after deleting one
 - 🐛(documentation) fix minio port and keycloak realm in the k8s guide #2751
 - 🐛(collaboration) bound the calls yhub makes to the backend with a timeout,

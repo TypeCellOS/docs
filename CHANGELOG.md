@@ -99,6 +99,7 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) save edits made while the http fallback carries the document
 - 🐛(frontend) fetch named versions fresh after deleting one
 - 🐛(documentation) fix minio port and keycloak realm in the k8s guide #2751
 - 🐛(collaboration) bound the calls yhub makes to the backend with a timeout,

@@ -53,15 +53,19 @@ export const createSafeCodeBlockSpec = (): ReturnType<
 > => {
   const spec = createCodeBlockSpec(codeBlockOptions);
   const baseRender = spec.implementation.render;
+  if (!baseRender) {
+    throw new Error('The BlockNote code block spec has no render function');
+  }
+  type Render = NonNullable<typeof spec.implementation.render>;
 
   return {
     ...spec,
     implementation: {
       ...spec.implementation,
       render(
-        this: ThisParameterType<typeof baseRender>,
-        ...args: Parameters<typeof baseRender>
-      ): ReturnType<typeof baseRender> {
+        this: ThisParameterType<Render>,
+        ...args: Parameters<Render>
+      ): ReturnType<Render> {
         const [block, editor] = args;
         const language = resolveCodeBlockLanguage(block.props.language);
 

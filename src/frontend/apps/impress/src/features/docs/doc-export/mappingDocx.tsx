@@ -32,7 +32,7 @@ export const getDocxDocsSchemaMappings = (
     quote: blockMappingQuoteDocx,
     image: blockMappingImageDocx,
     uploadLoader: blockMappingUploadLoaderDocx,
-    table: (block, exporter, nestedLevel, numberedListIndex, children) => {
+    table: (block, exporter, nestedLevel, numberedListIndex) => {
       /**
        * Nan values are not supported, so we need to replace them with undefined
        * to avoid issues during the export.
@@ -47,13 +47,17 @@ export const getDocxDocsSchemaMappings = (
         );
       }
 
-      return docxDefaultSchemaMappings.blockMapping.table(
-        block,
-        exporter,
-        nestedLevel,
-        numberedListIndex,
-        children,
-      );
+      const tableMapping = docxDefaultSchemaMappings.blockMapping.table;
+      // A table has no child blocks.
+      return typeof tableMapping === 'function'
+        ? tableMapping(block, exporter, nestedLevel, numberedListIndex)
+        : tableMapping.withChildren(
+            block,
+            exporter,
+            nestedLevel,
+            numberedListIndex,
+            [],
+          );
     },
   },
   inlineContentMapping: {

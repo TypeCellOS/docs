@@ -6,7 +6,6 @@ import {
   blockTypeSelectItems,
   getFormattingToolbarItems,
   useBlockNoteEditor,
-  useDictionary,
 } from '@blocknote/react';
 import dynamic from 'next/dynamic';
 import React, { useCallback, useMemo, useState } from 'react';
@@ -34,7 +33,6 @@ const AIToolbarButton = BlockNoteAI?.AIToolbarButton;
 
 export const BlockNoteToolbar = ({ aiAllowed }: { aiAllowed: boolean }) => {
   const editor = useBlockNoteEditor();
-  const dict = useDictionary();
   const [confirmOpen, setIsConfirmOpen] = useState(false);
   const [onConfirm, setOnConfirm] = useState<() => void | Promise<void>>();
   const { t } = useTranslation();
@@ -42,7 +40,7 @@ export const BlockNoteToolbar = ({ aiAllowed }: { aiAllowed: boolean }) => {
 
   const toolbarItems = useMemo(() => {
     let toolbarItems = getFormattingToolbarItems([
-      ...blockTypeSelectItems(dict),
+      ...blockTypeSelectItems(editor),
       getCalloutFormattingToolbarItems(t),
       ...getMathBlockTypeSelectItems(editor),
       ...getDiagramBlockTypeSelectItems(editor),
@@ -81,7 +79,7 @@ export const BlockNoteToolbar = ({ aiAllowed }: { aiAllowed: boolean }) => {
     });
 
     return toolbarItems;
-  }, [dict, editor, t]);
+  }, [editor, t]);
 
   const formattingToolbar = useCallback(() => {
     return (

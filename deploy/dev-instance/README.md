@@ -81,7 +81,14 @@ pull request.
    cd src/frontend && yarn install --ignore-engines
    ```
 
-   `yarn.lock` must change only the `@blocknote/*` entries.
+   `yarn.lock` must change only the `@blocknote/*` entries. A new BlockNote
+   version can change its API, and the deploy fails in the frontend build.
+   So type-check before you open the pull request:
+
+   ```bash
+   cd src/frontend/apps/impress && npx tsc --noEmit -p .
+   ```
+
 4. Commit as `⬆️(frontend) update BlockNote preview packages to <new sha>`
    (signed off), open a pull request against `dev`, and merge it. The merge
    deploys.

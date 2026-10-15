@@ -20,6 +20,12 @@ Repository: https://github.com/suitenumerique/docs
 - `src/mail/` - Email templates (MJML)
 - `src/helm/` - Kubernetes/Helm deployment
 
+## Dev instance (TypeCellOS fork)
+
+This fork deploys a dev instance from the `dev` branch. It uses preview packages
+of BlockNote. `deploy/dev-instance/README.md` explains how to deploy, and how to
+update BlockNote ("Update BlockNote").
+
 ## Development Commands
 
 ### Setup and Services

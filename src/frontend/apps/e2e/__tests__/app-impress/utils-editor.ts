@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { Page } from '@playwright/test';
+import { Page, expect } from '@playwright/test';
 
 export const getEditor = async ({ page }: { page: Page }) => {
   const editor = page.locator('.--docs--editor-container .ProseMirror');
@@ -34,10 +34,13 @@ export const openSuggestionMenu = async ({
   suggestion?: string;
 }) => {
   const editor = await tryFocusEditorContent({ page });
-  await page.keyboard.press('Enter');
-  await page.keyboard.type('/');
+  // Resolve and focus the current editor for each key: a collaborative editor
+  // rerender can replace the focused DOM node between these actions.
+  await editor.press('Enter');
+  await editor.press('/');
 
   const suggestionMenu = page.locator('.bn-suggestion-menu');
+  await expect(suggestionMenu).toBeVisible();
 
   if (suggestion) {
     await suggestionMenu

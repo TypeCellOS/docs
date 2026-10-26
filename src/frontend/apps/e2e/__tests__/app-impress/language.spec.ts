@@ -137,6 +137,10 @@ test.describe('Language', () => {
       LANGUAGE_CODE: 'en-us',
     });
 
+    // The beforeEach navigation has already loaded the default config. Reload
+    // after installing the override; client-side navigation keeps that cache.
+    await page.goto('/');
+
     await createDoc(page, 'doc-toolbar', browserName, 1);
 
     const { editor, suggestionMenu } = await openSuggestionMenu({ page });

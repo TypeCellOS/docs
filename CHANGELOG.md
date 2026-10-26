@@ -18,6 +18,7 @@ and this project adheres to
 
 ### Changed
 
+- ♻️(frontend) hide unavailable manual version actions in the history sidebar
 - ⬆️(frontend) update BlockNote preview packages to 83153fda2e
 - 🐛(frontend) adapt to the BlockNote 0.56 editor and exporter APIs
 - ♻️(frontend) restore bounded editor history through native yhub rollback
@@ -26,6 +27,14 @@ and this project adheres to
 
 ### Fixed
 
+- ✅(e2e) insert tall-slide filler without per-character keyboard overhead
+- 🐛(frontend) reconcile current comment state after leaving version history
+- 🐛(frontend) authenticate history requests and use consistent snapshot IDs
+- ✅(e2e) exercise sidebar history and renderer-independent PDF metadata
+- 🐛(frontend) bind collaborative editing after HTTP or offline readiness
+- ✅(e2e) locate editor and comment menus outside their trigger containers
+- 🐛(frontend) confirm history restores and show author-only attribution
+- 🐛(export) preserve DOCX table children and accept modern Yjs updates
 - 🐛(frontend) fetch named versions fresh after deleting one
 - 🐛(collaboration) restore editor versions without exposing full history
 - 🐛(collaboration) grant bounded named-version access for the history sidebar

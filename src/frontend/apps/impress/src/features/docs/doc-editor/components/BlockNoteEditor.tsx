@@ -59,6 +59,7 @@ import { userColorForeground } from '@/features/auth/userColors';
 import { useRightPanelStore } from '@/features/right-panel/stores/useRightPanelStore';
 import { useAnalytics } from '@/libs/Analytics';
 
+import { authorOnlyAttribution } from '../authorOnlyAttribution';
 import { AI_FEATURE_FLAG, DEFAULT_LOCALE } from '../conf';
 import { createDocsVersionStorage } from '../createDocsVersionStorage';
 import {
@@ -79,6 +80,7 @@ import { BlockNoteSuggestionMenu } from './BlockNoteSuggestionMenu';
 import { BlockNoteToolbar } from './BlockNoteToolBar/BlockNoteToolbar';
 import { DocsSideMenu } from './DocsSideMenu/DocsSideMenu';
 import { type HistoryDebugSettings } from './VersionHistoryDebug';
+import { VersioningComponentsProvider } from './VersioningComponentsProvider';
 import { VersioningSidebarPanel } from './VersioningSidebarPanel';
 import { CalloutBlock, PdfBlock, UploadLoaderBlock } from './custom-blocks';
 const AIMenu = BlockNoteAI?.AIMenu;
@@ -175,8 +177,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
   const historyDebugSettings = useRef<HistoryDebugSettings | undefined>(
     undefined,
   );
-  // BlockNote reads this object each time it shows a version, so a change
-  // applies without creating the editor again (which would lose the selection).
+  // Keep the options object stable so changing a diff fix preserves selection.
   const [experimentalOptions] = useState<ExperimentalVersionDiffs>(() => ({}));
   const [experimentalDiffs, setExperimentalDiffs] =
     useState<ExperimentalVersionDiffs>({});
@@ -259,7 +260,10 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
   const editor: DocsBlockNoteEditor = useCreateBlockNote(
     withCollaboration({
       collaboration: {
-        provider,
+        // DocEditor already waits for websocket, HTTP, or local readiness.
+        // Passing the socket's `synced` flag would prevent the Yjs binding
+        // from starting when only the HTTP fallback is available.
+        provider: { awareness: provider.awareness },
         fragment: provider.doc.get('document-store'),
         user: {
           id: user?.id ?? 'anonymous',
@@ -312,6 +316,9 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
       },
       dictionary: {
         ...localesBN[langLocalesBN as keyof typeof localesBN],
+        suggestion_changes: authorOnlyAttribution(
+          localesBN[langLocalesBN as keyof typeof localesBN].suggestion_changes,
+        ),
         math: mathLocales[langLocalesBNMathDiagram as keyof typeof mathLocales],
         diagram:
           diagramLocales[
@@ -475,54 +482,45 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
             threadsSidebarTarget,
           )}
         {isVersioningSidebarOpen && (
-          <VersioningSidebarPanel
-            onClose={() => setIsVersioningSidebarOpen(false)}
-            debug={{
-              defaults: historyDefaults,
-              initialSettings: historyDebugSettings.current ?? historyDefaults,
-              canCreate: !!doc.abilities.partial_update,
-              experimental: experimentalDiffs,
-              onExperimentalChange: (experimental) => {
-                experimentalOptions.versionDiffFixes =
-                  experimental.versionDiffFixes;
-                setExperimentalDiffs(experimental);
-                // Show the selected versions again with the new setting.
-                const mode =
-                  editor.getExtension<VersioningController>('versioning');
-                const state = mode?.store.state;
-                if (mode && state?.mode === 'versions') {
-                  void mode.select(state.displayed, {
-                    compareTo: state.compareTo,
-                  });
-                }
-              },
-              onApply: async (settings) => {
-                historyDebugSettings.current = settings;
-                const mode =
-                  editor.getExtension<VersioningController>('versioning');
-                return mode ? mode.list() : { status: 'unavailable' };
-              },
-              onCreate: async () => {
-                const mode =
-                  editor.getExtension<VersioningController>('versioning');
-                if (!mode || !doc.abilities.partial_update) {
-                  return { status: 'unavailable' };
-                }
-                const latest = mode.store.state;
-                if (
-                  latest.mode === 'versions' &&
-                  latest.history.data?.[0]?.name
-                ) {
-                  return { status: 'error', error: { type: 'conflict' } };
-                }
-                return mode.create(
-                  t('Test version · {{time}}', {
-                    time: new Date().toLocaleTimeString(),
-                  }),
-                );
-              },
-            }}
-          />
+          <VersioningComponentsProvider>
+            <VersioningSidebarPanel
+              key={doc.id}
+              onClose={() => {
+                setIsVersioningSidebarOpen(false);
+                // Historical text can reintroduce comment marks, but threads
+                // live outside the restored fragment. Reconcile their current
+                // resolved/deleted state after returning to the live editor.
+                threadStore.refreshThreads();
+              }}
+              debug={{
+                defaults: historyDefaults,
+                initialSettings:
+                  historyDebugSettings.current ?? historyDefaults,
+                canCreate: false,
+                experimental: experimentalDiffs,
+                onExperimentalChange: (experimental) => {
+                  experimentalOptions.versionDiffFixes =
+                    experimental.versionDiffFixes;
+                  setExperimentalDiffs(experimental);
+                  const mode =
+                    editor.getExtension<VersioningController>('versioning');
+                  const state = mode?.store.state;
+                  if (mode && state?.mode === 'versions') {
+                    void mode.select(state.displayed, {
+                      compareTo: state.compareTo,
+                    });
+                  }
+                },
+                onApply: async (settings) => {
+                  historyDebugSettings.current = settings;
+                  const mode =
+                    editor.getExtension<VersioningController>('versioning');
+                  return mode ? mode.list() : { status: 'unavailable' };
+                },
+                onCreate: async () => ({ status: 'unavailable' }),
+              }}
+            />
+          </VersioningComponentsProvider>
         )}
       </BlockNoteView>
     </Box>

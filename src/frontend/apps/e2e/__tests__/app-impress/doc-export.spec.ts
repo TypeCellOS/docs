@@ -379,9 +379,15 @@ test.describe('Doc Export', () => {
     await page.waitForTimeout(1000);
 
     const pdfBuffer = await cs.toBuffer(await download.createReadStream());
-    const pdfString = pdfBuffer.toString('latin1');
-
-    expect(pdfString).toContain('/Lang (fr)');
+    const pdf = new PDFParse({ data: pdfBuffer });
+    try {
+      // Read the catalog's language, independent of PDF token whitespace or
+      // whether the exporter stores the catalog in a compressed object stream.
+      const { info } = await pdf.getInfo();
+      expect(info?.Language).toBe('fr');
+    } finally {
+      await pdf.destroy();
+    }
   });
 
   test('it exports the doc to PDF with PRINT feature and checks regressions', async ({
@@ -461,7 +467,8 @@ test.describe('Doc Export', () => {
     // If we need to update the PDF regression fixture, uncomment the line below
     //await savePDFToAssetFolder(pdfBuffer, 'doc-export-regressions.pdf');
 
-    // Assert the generated PDF matches "assets/doc-export-regressions.pdf"
+    // Reviewed Typst baseline: keep exact text (including emoji and math),
+    // page count, dimensions and per-page pixel comparisons enabled.
     await comparePDFWithAssetFolder({
       originPdfBuffer: pdfBuffer,
       filename: 'doc-export-regressions.pdf',

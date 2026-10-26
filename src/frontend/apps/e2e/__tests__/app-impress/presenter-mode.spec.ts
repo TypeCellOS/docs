@@ -366,8 +366,14 @@ test.describe('Presenter Mode', () => {
     const editor = await writeInEditor({ page, text: 'TOP MARKER' });
     for (let i = 0; i < 40; i += 1) {
       await editor.press('Enter');
-      await editor.pressSequentially(`Filler line ${i} to make the slide tall`);
+      // This exercises layout, not per-character keyboard handling.
+      await page.keyboard.insertText(`Filler line ${i} to make the slide tall`);
     }
+    await expect(
+      editor.getByText('Filler line 39 to make the slide tall', {
+        exact: true,
+      }),
+    ).toBeVisible();
 
     const overlay = await openPresenter(page);
     await overlay.getByRole('button', { name: 'Next slide' }).click();

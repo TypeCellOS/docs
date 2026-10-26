@@ -162,6 +162,25 @@ export const comparePDFWithAssetFolder = async ({
   const referencePdfPath = path.join(__dirname, 'assets', filename);
   const referencePdfBuffer = fs.readFileSync(referencePdfPath);
 
+  // Keep both PDFs even when page-count or text assertions fail, not only
+  // pixel comparisons: these are needed to review an exporter migration.
+  if (testInfo) {
+    await writeReport(
+      testInfo,
+      'generated.pdf',
+      'pdf-generated',
+      originPdfBuffer,
+      'application/pdf',
+    );
+    await writeReport(
+      testInfo,
+      'reference.pdf',
+      'pdf-reference',
+      referencePdfBuffer,
+      'application/pdf',
+    );
+  }
+
   // Parse both PDFs
   const generatedPdf = new PDFParse({ data: originPdfBuffer });
   const referencePdf = new PDFParse({ data: referencePdfBuffer });
@@ -232,20 +251,6 @@ export const comparePDFWithAssetFolder = async ({
       if (testInfo) {
         const pageNo = String(i + 1).padStart(2, '0');
 
-        await writeReport(
-          testInfo,
-          `generated.pdf`,
-          `pdf-generated`,
-          originPdfBuffer,
-          'application/pdf',
-        );
-        await writeReport(
-          testInfo,
-          `reference.pdf`,
-          `pdf-reference`,
-          referencePdfBuffer,
-          'application/pdf',
-        );
         await writeReport(
           testInfo,
           `page-${pageNo}-diff.png`,

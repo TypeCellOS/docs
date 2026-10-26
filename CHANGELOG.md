@@ -27,6 +27,8 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) authenticate history requests and use consistent snapshot IDs
+- ✅(e2e) exercise sidebar history and renderer-independent PDF metadata
 - 🐛(frontend) bind collaborative editing after HTTP or offline readiness
 - ✅(e2e) locate editor and comment menus outside their trigger containers
 - 🐛(frontend) confirm history restores and show author-only attribution

@@ -30,7 +30,9 @@ It is not a fork of yhub — it is a thin wrapper, written in TypeScript under
   below),
 - plugs in an auth plugin that resolves users and per-document access rights
   by calling the Docs Django backend (`/api/v1.0/users/me/` and
-  `/api/v1.0/documents/{id}/`),
+  `/api/v1.0/documents/{id}/`; the user call is skipped for any caller whose
+  `Cookie` header does not carry the backend's `docs_sessionid` cookie —
+  they can only be anonymous),
 - serves every route under the `/collaboration/` prefix
   (`server.apiPrefix`), including the websocket sync route
   `/collaboration/ws/v1/{org}/{docid}`,
@@ -227,6 +229,13 @@ yhub refuses the upgrade of a caller that holds the write but has no identity,
 because attributions carry the userid. Every anonymous edit is therefore
 attributed to that one shared author.
 
+A caller whose `Cookie` header does not carry the backend's session cookie
+(`docs_sessionid`) is anonymous without a roundtrip: the backend only ever
+speaks sessions through that one cookie, so the `users/me` call could only
+answer 401 for them, and the identity is resolved locally instead. Browsers
+still send their other cookies (csrf, consent, …) on that header, which is why
+the check is on the session cookie rather than on the header being present.
+
 ### Origins and cors
 
 `COLLABORATION_SERVER_ORIGIN` is the list of origins a browser may reach this
@@ -291,6 +300,70 @@ were configurable:
 | `YHUB_TASK_DEBOUNCE_MS` | `10000` | How long an update waits on the stream before a worker persists it |
 | `YHUB_MIN_MESSAGE_LIFETIME_MS` | `60000` | How long persisted updates stay replayable from redis |
 | `YHUB_BACKEND_REQUEST_TIMEOUT_MS` | `5000` | How long a call to the Docs backend may take before it is given up on |
+| `YHUB_AUTH_TIMEOUT_MS` | `30000` | How long yhub waits for `authenticate` or `authorize` as a whole (backend calls, legacy seed) before it answers 503; raise it with `YHUB_BACKEND_REQUEST_TIMEOUT_MS` |
+| `YHUB_IDENTITY_CACHE_TTL_MS` | `0` | How long a resolved `users/me` identity is reused for the same Cookie header (authz cache, off by default) |
+| `YHUB_ABILITIES_CACHE_TTL_MS` | `0` | How long a `documents/{id}` verdict is served from cache before it is re-read (deleted by `reset-connections`, see the authz-cache section) |
+| `YHUB_ACCESS_CACHE_TTL_MS` | `0` | How long an `accesses/me` date is served from cache before it is re-read |
+
+### The authz cache
+
+Off by default, the three TTLs above turn on a cache that keeps the
+connection path from calling the backend on every request. The three payloads
+it holds go stale differently, so each has its own layer:
+
+- **identity** (`users/me` → userid, keyed on the SHA-256 of the whole
+  `Cookie` header): kept in-process, per replica, no invalidation. Nothing on
+  the backend side can name the key, and nothing needs to — a logged-out
+  caller is at most one TTL stale, and the stale userid then fails closed at
+  the abilities fetch, which answers 401 and denies. One nuance of that
+  staleness: a caller editing a *public* document keeps their userid for up
+  to one TTL after a server-side logout, so those edits stay attributed to
+  the logged-out user instead of `anonymous` — access is unaffected.
+- **abilities** (`documents/{id}` → the verdict): the one payload a stale
+  entry would over-grant, so it lives in yhub's own redis — the one already
+  carrying the document streams, shared between the replicas and never
+  touched by the backend — under
+  `{prefix}:authz:abilities:{{org}:{docid}}:{sha256(cookie)}`, and the
+  shortest TTL bounds what any lost invalidation can leave behind. Anonymous
+  callers share one entry per document (`…:anon`): what they may do is the
+  document's link configuration, and nothing about them distinguishes one
+  from another.
+- **access** (`accesses/me` → the stored `created_at` bounding history
+  reads): keyed per user, in redis like the abilities and retired by the same
+  kick. Not frozen: an access removed then granted again comes back with a
+  later date, and a stale earlier one would widen the history.
+
+**Revocation stays immediate.** Every document has a *generation* in yhub's
+redis (`{prefix}:authz:gen:{{org}:{docid}}`), and every entry stores the
+generation it was read under next to its value. A lookup reads both with a
+single `MGET` — their names are known up front — and an entry of another
+generation is a miss. The backend's `reset-connections` kick — a plain HTTP
+POST, it reads nothing of yhub's stores — reaches one replica, which — before
+triggering the recheck — writes a new generation for that document (see
+`invalidateDocumentAuthz`). That one write retires every `authz` entry of the
+document on every replica: nothing is searched for or deleted, and the
+retired entries expire on their own TTL. The recheck itself is distributed to
+all replicas through the same redis stream, and every recheck re-runs
+`authorize`, which then reads post-invalidation state. The abilities TTL is
+therefore only the backstop for a lost kick, not the mechanism.
+
+The generation is read *before* the backend is asked, and the answer is
+stored under that generation: an `authorize` already in flight when the kick
+lands stores its pre-revocation verdict under the retired generation, where
+every later lookup reads a miss. `{org}:{docid}` is a redis hash tag, so the
+keys of one document share a slot, which `MGET` requires should this redis
+ever become a cluster.
+
+A backend refusal (403/404) is cached like any other verdict: a client that
+lost access costs one call per TTL, not one per poll. A backend that did not
+answer is never cached — an error is not a permission decision. Concurrent
+misses of one entry share a single backend call per replica, so a burst of
+anonymous visitors on a cold public document costs one request.
+
+Watch `yhub_authz_cache_lookups_total{layer,result}` alongside
+`yhub_backend_request_duration_seconds{route}`: the hit rate tells you what
+the cache is saving, and the remaining `users_me` / `document` /
+`accesses_me` rates tell you what is left.
 
 **Concurrency** multiplies with the number of processes running a worker, since
 redis hands each task to exactly one of them: the two are interchangeable up to
@@ -610,11 +683,19 @@ already includes it, so a fresh checkout needs nothing extra; an upgrade is
 
 ## Deletion
 
-The content of a document lives here, so deleting one in Docs has to be said
-here too — otherwise the clients already connected keep editing it and the
-content outlives the document. The backend does that from
-`sync_service_deletions_in_cascade`, which walks the deleted subtree and tells
-this server what became of each of its documents.
+A soft deletion in Docs is no longer reported to this server: the room stays
+alive, its access re-checks — the backend answers read-only for a deleted
+document — keep it so for everyone, and the reset of connections the deletion
+queues (`reset_service_connections_on_commit`) closes the clients still
+connected with edit rights. Tombstoning the room here would make the document
+unreachable from the editor, which the trashbin and the restore feature need.
+
+The routes below remain what they are: `delete_ydoc` still reports the
+documents deleted for good from the database (`delete_service_documents`) and
+the duplicates of a failed duplication, and `restore_ydoc` is the safety net
+the backend's restoration walk (`sync_service_restorations_in_cascade`) keeps
+running: nothing tombstones the room of a soft-deleted document anymore, and
+only this call lifts a tombstone laid out of band.
 
 Deleting is `DELETE /collaboration/ydoc/v1/{org}/{docid}`, built into yhub
 0.6.0. It is a **soft** deletion: the deletion is recorded, the clients editing
@@ -627,7 +708,9 @@ Restoring is the custom `POST /collaboration/restore-ydoc/v1/{org}/{docid}`
 above: yhub 0.6.0 has no built-in route for it. The content was never touched,
 so the document comes back with its whole history. Restoring one that is not
 deleted answers 200 and changes nothing, which is what lets the backend restore
-a subtree without asking what became of each document in it.
+a subtree without asking what became of each document in it — and what lets the
+restoration walk skip the documents that stay deleted, instead of tombstoning
+them.
 
 Erasing the content for good is a third operation (`YHub.deleteDoc(docRef, {
 hard: true })`). yhub 0.8 exposes it over REST as `DELETE .../ydoc?hard=true`,

@@ -1,4 +1,4 @@
-"""Custom middlewares of the impress core application."""
+"""Custom middlewares of the impress core app."""
 
 from secrets import compare_digest
 
@@ -10,33 +10,6 @@ from django.utils.deprecation import MiddlewareMixin
 # Defined here rather than next to the view so that this module, which is always
 # loaded, does not import prometheus_client when the metrics are disabled.
 METRICS_PATH = "/metrics"
-
-# Paths that must never touch the session store. Liveness and readiness
-# probes should never create a new session in redis. Also, the liveness probe
-# should never reach redis before returning its answer. A scraper carries no
-# cookie either: each of its calls would leave one more session behind.
-SESSION_EXEMPT_PATHS = (
-    "/__lbheartbeat__",
-    "/__heartbeat__",
-    METRICS_PATH,
-)
-
-
-class ForceSessionMiddleware(MiddlewareMixin):
-    """
-    Force session creation for unauthenticated users.
-    Must be used after Authentication middleware.
-    """
-
-    def process_request(self, request):
-        """Force session creation for unauthenticated users."""
-        # Check the path before touching `request.user`: evaluating it loads
-        # the session from the cache backend.
-        if request.path.rstrip("/") in SESSION_EXEMPT_PATHS:
-            return
-
-        if not request.user.is_authenticated and request.session.session_key is None:
-            request.session.create()
 
 
 class SaveRawBodyMiddleware(MiddlewareMixin):

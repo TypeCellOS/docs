@@ -1942,10 +1942,9 @@ class Thread(BaseModel):
         role = self.document.get_role(user)
         doc_abilities = self.document.get_abilities(user)
         read_access = doc_abilities.get("comment", False)
-        write_access = self.creator == user or role in [
-            RoleChoices.OWNER,
-            RoleChoices.ADMIN,
-        ]
+        write_access = read_access and (
+            self.creator == user or role in [RoleChoices.OWNER, RoleChoices.ADMIN]
+        )
         return {
             "destroy": write_access,
             "update": write_access,
@@ -1997,14 +1996,13 @@ class Comment(BaseModel):
         read_access = doc_abilities.get("comment", False)
         can_react = read_access and user.is_authenticated
         is_author = self.user == user
-        can_moderate = is_author or role in [
-            RoleChoices.OWNER,
-            RoleChoices.ADMIN,
-        ]
+        can_moderate = read_access and (
+            is_author or role in [RoleChoices.OWNER, RoleChoices.ADMIN]
+        )
         return {
             "destroy": can_moderate,
-            "update": is_author,
-            "partial_update": is_author,
+            "update": read_access and is_author,
+            "partial_update": read_access and is_author,
             "reactions": can_react,
             "retrieve": read_access,
         }
@@ -2159,11 +2157,16 @@ class Mention(BaseModel):
 
         # Guard against concurrent notification tasks for the same context.
         # cache.add is atomic on the shared Redis backend: only the first task
-        # acquires the key and proceeds, the others get False
-        if not cache.add(
-            self.notification_guard_key,
-            str(self.pk),
-            timeout=MENTION_NOTIFICATION_GUARD_TIMEOUT_SECONDS,
+        # acquires the key and proceeds, the others get False.
+        # When the cache is down we send anyway, the guard is
+        # best-effort and the database cooldown still applies
+        if (
+            cache.add(
+                self.notification_guard_key,
+                str(self.pk),
+                timeout=MENTION_NOTIFICATION_GUARD_TIMEOUT_SECONDS,
+            )
+            is False
         ):
             return False
 

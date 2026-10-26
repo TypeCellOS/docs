@@ -113,7 +113,7 @@ test.describe('Document grid item options', () => {
     const [docTitle] = await createDoc(page, `Favorite doc`, browserName);
     const [docTitle2] = await createDoc(page, `Not Favorite doc`, browserName);
 
-    await page.getByRole('button', { name: 'Back to homepage' }).click();
+    await page.getByRole('link', { name: 'Back to homepage' }).click();
 
     const row = await getGridRow(page, docTitle);
 
@@ -274,7 +274,7 @@ test.describe('Documents filters', () => {
     await addNewMember(otherPage, 0, 'Editor', browserName);
 
     // Let's check the filters
-    await page.getByRole('button', { name: 'Back to homepage' }).click();
+    await page.getByRole('link', { name: 'Back to homepage' }).click();
 
     const row = await getGridRow(page, docName);
     const rowShare = await getGridRow(page, docShareName);
@@ -370,7 +370,7 @@ test.describe('Documents Grid', () => {
     const [docB] = await createDoc(page, 'b-sorting-feat-bbb', browserName);
     const [docZ] = await createDoc(page, 'z-sorting-feat-zzz', browserName);
 
-    await page.getByRole('button', { name: 'Back to homepage' }).click();
+    await page.getByRole('link', { name: 'Back to homepage' }).click();
 
     const rowFilter = (text: string) =>
       page.getByTestId('docs-grid').getByRole('listitem').filter({

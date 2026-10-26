@@ -221,8 +221,9 @@ test.describe('Doc Header', () => {
     // Add emoji
     await expect(removeEmoji).toBeHidden();
     await addEmoji.click();
+    await page.getByRole('button', { name: '😍' }).first().click();
     // The 1 April the emoji is a fish
-    await expect(emojiPicker).toHaveText(/📄|🐟/);
+    await expect(emojiPicker).toHaveText(/😍|🐟/);
 
     // Change emoji
     await emojiPicker.click({
@@ -550,7 +551,7 @@ test.describe('Doc Header', () => {
     ).toBeVisible();
     await toast.getByRole('link', { name: 'Open' }).click();
 
-    const duplicateTitle = 'Copy of ' + docTitle;
+    const duplicateTitle = docTitle + ' (copy)';
     await verifyDocName(page, duplicateTitle);
 
     await page.goto('/');
@@ -565,7 +566,7 @@ test.describe('Doc Header', () => {
     await expect(gridToast.getByText('Document duplicated')).toBeVisible();
     await gridToast.getByRole('link', { name: 'Open' }).click();
 
-    const duplicateDuplicateTitle = 'Copy of ' + duplicateTitle;
+    const duplicateDuplicateTitle = duplicateTitle + ' (copy)';
     await verifyDocName(page, duplicateDuplicateTitle);
     await expect(page.getByText('Hello Duplicated World')).toBeVisible();
   });
@@ -583,7 +584,7 @@ test.describe('Doc Header', () => {
     await editor.click();
     await editor.fill('Hello Duplicated World');
 
-    const duplicateTitle = 'Copy of ' + childTitle;
+    const duplicateTitle = childTitle + ' (copy)';
     const docTree = page.getByTestId('doc-tree');
     const currentUrl = page.url();
 
@@ -659,7 +660,7 @@ test.describe('Doc Header', () => {
     ).toBeVisible();
     await toast.getByRole('link', { name: 'Open' }).click();
 
-    const duplicateTitle = 'Copy of ' + docTitle;
+    const duplicateTitle = docTitle + ' (copy)';
     await verifyDocName(page, duplicateTitle);
     await expect(
       page.getByTestId('doc-tree').getByText(childTitle),
@@ -680,7 +681,7 @@ test.describe('Doc Header', () => {
     ).toBeVisible();
     await toast.getByRole('link', { name: 'Open' }).click();
 
-    const duplicateWithoutSubdocsTitle = 'Copy of ' + duplicateTitle;
+    const duplicateWithoutSubdocsTitle = duplicateTitle + ' (copy)';
     await verifyDocName(page, duplicateWithoutSubdocsTitle);
     await expect(
       page.getByTestId('doc-tree').getByText(childTitle),

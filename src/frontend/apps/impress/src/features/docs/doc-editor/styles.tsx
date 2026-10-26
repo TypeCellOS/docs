@@ -48,13 +48,13 @@ export const DocsEditorStyle = createGlobalStyle`
     /**
     * Ensure long placeholder text is truncated with ellipsis
     */
-    .bn-block-content[data-is-empty-and-focused][data-content-type='paragraph']
-      .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before {
+    .bn-block-content[data-is-empty-and-focused][data-content-type='paragraph']:has(.ProseMirror-trailingBreak:only-child)::after {
       text-overflow: ellipsis;
       white-space: nowrap;
       overflow: hidden;
       width: inherit;
       height: inherit;
+      font-style: normal;
     }
     .bn-block-content[data-is-empty-and-focused][data-content-type='paragraph']
       .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child) {
@@ -136,8 +136,9 @@ export const DocsEditorStyle = createGlobalStyle`
       cursor: pointer;
     }
     .bn-block-group
+      .bn-block:not(:has(.bn-toggle-wrapper))
       .bn-block-group
-      .bn-block-outer:not([data-prev-depth-changed]):before {
+      .bn-block-outer:not([data-prev-depth-changed])::before {
       border-left: none;
     }
 

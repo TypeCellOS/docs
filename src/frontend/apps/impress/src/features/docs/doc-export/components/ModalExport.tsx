@@ -28,7 +28,7 @@ import {
 } from '../utils_html';
 import { addMediaFilesToMarkdownZip } from '../utils_markdown';
 
-const useExportAGPL = ModulesExport?.useExportAGPL;
+const useExportXL = ModulesExport?.useExportXL;
 
 interface ModalExportProps {
   onClose: () => void;
@@ -43,9 +43,9 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
   const { untitledDocument } = useTrans();
   const mediaUrl = useMediaUrl();
   const selectRef = useRef<HTMLDivElement>(null);
-  const exportAGPL = useExportAGPL?.(doc, editor);
+  const exportXL = useExportXL?.(doc, editor);
   const [format, setFormat] = useState(
-    exportAGPL?.formats.find((opt) => opt.value === 'pdf')?.value || 'html',
+    exportXL?.formats.find((opt) => opt.value === 'pdf')?.value || 'html',
   );
 
   useEffect(() => {
@@ -59,16 +59,23 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
   }, []);
 
   const formatSelect = useMemo(() => {
-    const formatOptions = (exportAGPL?.formats || []).concat([
+    const formatOptions = (exportXL?.formats || []).concat([
       {
-        label: t('Markdown'),
+        label: t('Markdown', {
+          description: 'Name of the Markdown export format',
+        }),
         value: 'markdown',
-        labelDescription: t('.md(zip)'),
+        labelDescription: t('.md(zip)', {
+          description:
+            'File extension hint of the Markdown export, a zip archive',
+        }),
       },
       {
-        label: t('HTML'),
+        label: t('HTML', { description: 'Name of the HTML export format' }),
         value: 'html',
-        labelDescription: t('.html(zip)'),
+        labelDescription: t('.html(zip)', {
+          description: 'File extension hint of the HTML export, a zip archive',
+        }),
       },
     ]);
 
@@ -87,12 +94,17 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
         : labels.join('');
 
     return { formatOptions, formatLabels, allFormatsLabel };
-  }, [t, exportAGPL?.formats]);
+  }, [t, exportXL?.formats]);
 
   /** Exports the selected format and always releases the loading state. */
   async function onSubmit() {
     if (!editor) {
-      toast(t('The export failed'), VariantType.ERROR);
+      toast(
+        t('The export failed', {
+          description: 'Toast shown when exporting the document fails',
+        }),
+        VariantType.ERROR,
+      );
       return;
     }
 
@@ -104,7 +116,7 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
       const filename = getExportFilename(documentTitle);
       let downloadExtension = format === 'markdown' ? 'md' : format;
 
-      let blobExport = await exportAGPL?.docToBlob(format, documentTitle);
+      let blobExport = await exportXL?.docToBlob(format, documentTitle);
 
       if (!blobExport && format === 'markdown') {
         const zip = new JSZip();
@@ -169,7 +181,12 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
       }
 
       if (!blobExport) {
-        toast(t('The export failed'), VariantType.ERROR);
+        toast(
+          t('The export failed', {
+            description: 'Toast shown when exporting the document fails',
+          }),
+          VariantType.ERROR,
+        );
         return;
       }
 
@@ -177,6 +194,8 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
 
       toast(
         t('Your {{format}} was downloaded succesfully', {
+          description:
+            'Toast shown after an export; format is PDF, Docx, ODT...',
           format,
         }),
         VariantType.SUCCESS,
@@ -184,7 +203,12 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
 
       shouldClose = true;
     } catch {
-      toast(t('The export failed'), VariantType.ERROR);
+      toast(
+        t('The export failed', {
+          description: 'Toast shown when exporting the document fails',
+        }),
+        VariantType.ERROR,
+      );
     } finally {
       setIsExporting(false);
     }
@@ -206,16 +230,23 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
       rightActions={
         <>
           <Button
-            aria-label={t('Cancel the download')}
+            aria-label={t('Cancel the download', {
+              description:
+                'Accessible name of the button cancelling a download',
+            })}
             variant="secondary"
             fullWidth
             onClick={() => onClose()}
           >
-            {t('Cancel')}
+            {t('Cancel', {
+              description: 'Button to dismiss a dialog without confirming',
+            })}
           </Button>
           <Button
             data-testid="doc-export-download-button"
             aria-label={t('Download {{format}}', {
+              description:
+                'Accessible name of the export button; format is PDF, Docx, ODT...',
               format: formatSelect.formatLabels[format],
             })}
             variant="primary"
@@ -223,7 +254,9 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
             onClick={() => void onSubmit()}
             disabled={isExporting}
           >
-            {t('Download')}
+            {t('Download', {
+              description: 'Dropdown menu item to download the document',
+            })}
           </Button>
         </>
       }
@@ -238,11 +271,16 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
             $align="flex-start"
             data-testid="modal-export-title"
           >
-            {t('Export')}
+            {t('Export', {
+              description: 'Title of the dialog to export a document',
+            })}
           </Text>
           <Box $position="absolute" $css="top: 8px; right: 8px;">
             <ButtonCloseModal
-              aria-label={t('Close the download modal')}
+              aria-label={t('Close the download modal', {
+                description:
+                  'Accessible name of the button closing the export dialog',
+              })}
               onClick={() => onClose()}
               disabled={isExporting}
             />
@@ -262,6 +300,7 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
           id="modal-export-description"
         >
           {t('Export your document to download in {{format}} format.', {
+            description: 'Explanation in the export dialog',
             format: formatSelect.allFormatsLabel,
           })}
         </Text>
@@ -269,7 +308,9 @@ export const ModalExport = ({ onClose, doc }: ModalExportProps) => {
           <Select
             clearable={false}
             fullWidth
-            label={t('Format')}
+            label={t('Format', {
+              description: 'Label of the export format selector',
+            })}
             options={formatSelect.formatOptions}
             value={format}
             onChange={(options) => setFormat(options.target.value as string)}

@@ -11,11 +11,19 @@ import { jwtVerify } from 'jose';
 
 import { api } from './api.js';
 // outbound calls to the Docs Django backend, and the keys both ends verify with
-import type { BackendDocument, BackendUser } from './backend.js';
-import { JWKS, backendFetch, touchDocument } from './backend.js';
+import {
+  JWKS,
+  carriesSessionCookie,
+  errStatus,
+  resolveAbilities,
+  resolveAccess,
+  resolveUserid,
+  touchDocument,
+} from './backend.js';
 import {
   ANONYMOUS_USERID,
   API_PREFIX,
+  AUTH_TIMEOUT_MS,
   BACKEND_REQUEST_TIMEOUT_MS,
   MIN_MESSAGE_LIFETIME_MS,
   ORG,
@@ -66,13 +74,6 @@ import type { AppAuthInfo, DocRef, YHub } from './yhub.js';
 
 // Read the ad-hoc tags the error paths below switch on without trusting the
 // error's runtime shape.
-const errStatus = (err: unknown): number | undefined =>
-  typeof err === 'object' &&
-  err !== null &&
-  'status' in err &&
-  typeof (err as { status: unknown }).status === 'number'
-    ? (err as { status: number }).status
-    : undefined;
 const errCode = (err: unknown): string | undefined =>
   typeof err === 'object' &&
   err !== null &&
@@ -192,17 +193,21 @@ const auth = createAuthPlugin<AppAuthInfo>({
     // `Origin` header at all, so on a deployment where the page and /collaboration/ share a
     // host every round would 401 while the PATCH beside it succeeded.
     //
-    // A caller with no cookie at all is anonymous too: the probes arrive that way, and so does
-    // a public document opened in a fresh browser. What they may do is `authorize`'s answer.
-    if (!cookie) {
+    // The backend only ever speaks sessions through its one session cookie
+    // (`docs_sessionid`): a caller whose `Cookie` header does not carry it can
+    // only resolve to the anonymous identity, and is answered as such without
+    // the `users/me` roundtrip. This is not just the cookie-less case — the
+    // probes and a public document in a fresh browser — but every signed-out
+    // tab: since the backend stopped forcing a session onto anonymous users,
+    // they hold no `docs_sessionid` at all, and browsers still send their other
+    // cookies (csrf, consent, …) on this header. What an anonymous caller may
+    // do is `authorize`'s answer, as before.
+    if (!carriesSessionCookie(cookie)) {
       return { userid: ANONYMOUS_USERID, origin, endpoint };
     }
     try {
-      const user = await backendFetch<BackendUser>('/api/v1.0/users/me/', {
-        cookie,
-        origin,
-      });
-      return { userid: String(user.id), cookie, origin, endpoint };
+      const userid = await resolveUserid(cookie, origin);
+      return { userid, cookie, origin, endpoint };
     } catch (err) {
       // Only a genuine "not signed in" falls back to the anonymous identity.
       // On backend failure (5xx/network) still refuse to admit the connection —
@@ -257,23 +262,13 @@ const auth = createAuthPlugin<AppAuthInfo>({
       if (org !== ORG || branch !== 'main' || !UUID4.test(docid)) {
         return null;
       }
-      let doc: BackendDocument;
-      try {
-        doc = await backendFetch<BackendDocument>(
-          `/api/v1.0/documents/${docid}/`,
-          user ?? {},
-        );
-      } catch (err) {
-        // the backend answered "no": a real, permanent denial (403 Forbidden)
-        const status = errStatus(err);
-        if (status === 401 || status === 403 || status === 404) {
-          return null;
-        }
-        // it did not answer at all — say so, so the caller retries instead of
-        // reading a 5xx or a network blip as a permission decision
-        throw apiError(503, 'Document authorization backend is unavailable');
-      }
-      if (!doc.abilities?.retrieve) {
+      const { abilities, identified } = await resolveAbilities(
+        yhub,
+        org,
+        docid,
+        user,
+      );
+      if (!abilities.retrieve) {
         return null;
       }
       // the backend has already decided the caller may read this document; the
@@ -284,20 +279,14 @@ const auth = createAuthPlugin<AppAuthInfo>({
 
       // When this caller was given access, which is where the history they may
       // read starts. `resolveHistoryFrom` decides whether to ask for it at all
-      // and what an unusable answer means — see permissions.ts.
-      let accessSince: number | null;
-      try {
-        accessSince = await resolveHistoryFrom(doc.abilities, () =>
-          backendFetch(`/api/v1.0/documents/${docid}/accesses/me/`, user ?? {}),
-        );
-      } catch {
-        // the backend did not answer; same treatment as the document fetch above
-        throw apiError(503, 'Document authorization backend is unavailable');
-      }
-      return browserDocumentPermissions(
-        doc.abilities.update === true,
-        accessSince,
-      );
+      // and what an unusable answer means — see permissions.ts. An anonymous
+      // caller holds no access row, so they are not asked at all.
+      const accessSince = identified
+        ? await resolveHistoryFrom(abilities, () =>
+            resolveAccess(yhub, org, docid, user),
+          )
+        : null;
+      return browserDocumentPermissions(abilities.update === true, accessSince);
     },
     async global() {
       return publicGlobalPermissions;
@@ -480,6 +469,9 @@ const yhub: YHub = (await createYHub({
         // on a cross-origin `fetch`; it is also why the list has to be concrete, browsers
         // refusing "*" together with Access-Control-Allow-Credentials.
         cors: { origin: allowedOrigins, credentials: true },
+        // see AUTH_TIMEOUT_MS: yhub's own default is shorter than the legacy
+        // seed `authorize` may legitimately wait on
+        authTimeout: AUTH_TIMEOUT_MS,
       }
     : null,
   worker: RUNS_WORKER
@@ -514,6 +506,7 @@ logger.info(
     taskDebounceMs: yhub.stream.taskDebounce,
     minMessageLifetimeMs: yhub.stream.minMessageLifetime,
     backendRequestTimeoutMs: BACKEND_REQUEST_TIMEOUT_MS,
+    authTimeoutMs: RUNS_SERVER ? AUTH_TIMEOUT_MS : null,
   },
   'yhub configuration',
 );

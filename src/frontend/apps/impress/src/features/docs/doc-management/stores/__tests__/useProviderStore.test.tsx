@@ -1,5 +1,6 @@
 import { Awareness } from '@y/protocols/awareness';
 import * as Y from '@y/y';
+import { decodeAny, encodeAny } from 'lib0/buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useProviderStore } from '../useProviderStore';
@@ -100,10 +101,10 @@ describe('useProviderStore', () => {
     expect(options.awareness.getLocalState()).toBeNull();
   });
 
-  it('marks the connection as established and ready when the websocket connects', () => {
+  it('waits for content sync after the websocket connects', () => {
     provider.emit('status', { status: 'connected' });
     expect(useProviderStore.getState().isConnected).toBe(true);
-    expect(useProviderStore.getState().isReady).toBe(true);
+    expect(useProviderStore.getState().isReady).toBe(false);
   });
 
   it('reports a lost connection when a previously connected socket closes', () => {
@@ -121,6 +122,7 @@ describe('useProviderStore', () => {
     vi.advanceTimersByTime(3000);
     expect(useProviderStore.getState().hasLostConnection).toBe(false);
     expect(useProviderStore.getState().isPermanentlyClosed).toBe(false);
+    expect(useProviderStore.getState().isReady).toBe(false);
   });
 
   it('does not re-render subscribers on repeated retries', () => {
@@ -179,6 +181,83 @@ describe('useProviderStore', () => {
     expect(useProviderStore.getState().isSynced).toBe(true);
     expect(useProviderStore.getState().isReady).toBe(true);
   });
+
+  it('keeps an empty document loading after an unsuccessful sync', () => {
+    provider.emit('sync', false);
+    expect(useProviderStore.getState().isReady).toBe(false);
+  });
+
+  it('publishes editor updates without presence when HTTP awareness is disabled', async () => {
+    const send = vi.fn<typeof fetch>(
+      async () => new Response(new Uint8Array(encodeAny({}))),
+    );
+    vi.stubGlobal('fetch', send);
+    useProviderStore.getState().destroyProvider();
+    useProviderStore
+      .getState()
+      .createProvider(
+        'ws://localhost/collaboration/ws/v1/docs',
+        'doc-id',
+        undefined,
+        { httpAwareness: false, httpSyncInterval: 20000 },
+      );
+    provider.close(1006);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(send.mock.calls[0]?.[0]).toContain('awareness=false');
+    const request = send.mock.calls[0]?.[1] as RequestInit;
+    expect(request.method).toBe('PATCH');
+    expect(decodeAny(request.body as Uint8Array)).not.toHaveProperty(
+      'awareness',
+    );
+    expect(useProviderStore.getState().isReady).toBe(true);
+    const calls = send.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(19999);
+    expect(send).toHaveBeenCalledTimes(calls);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(send.mock.calls.length).toBeGreaterThan(calls);
+  });
+
+  it('uses JSON polling without publishing writes for a reader', async () => {
+    const send = vi.fn<typeof fetch>(
+      async () =>
+        new Response('{}', {
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', send);
+    useProviderStore.getState().destroyProvider();
+    useProviderStore
+      .getState()
+      .createProvider(
+        'ws://localhost/collaboration/ws/v1/docs',
+        'doc-id',
+        undefined,
+        { readOnly: true, httpJson: true },
+      );
+    provider.close(1006);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(send).toHaveBeenCalledTimes(1);
+    const request = send.mock.calls[0]?.[1] as RequestInit;
+    expect(request.method).toBe('GET');
+    expect(new Headers(request.headers).get('Accept')).toBe('application/json');
+  });
+
+  it.each([400, 401, 403, 404, 429, 500])(
+    'only stops both transports for an HTTP access refusal (%s)',
+    async (status) => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(async () => new Response(null, { status })),
+      );
+      provider.close(1006);
+      await vi.advanceTimersByTimeAsync(0);
+      const refused = [401, 403, 404].includes(status);
+      expect(useProviderStore.getState().isPermanentlyClosed).toBe(refused);
+      expect(provider.shouldConnect).toBe(!refused);
+      expect(provider.disconnect).toHaveBeenCalledTimes(refused ? 1 : 0);
+    },
+  );
 
   it('tears everything down with the document', () => {
     useProviderStore.getState().destroyProvider();

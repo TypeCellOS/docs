@@ -51,7 +51,12 @@ export const BlockNoteSuggestionMenu = ({
 
   const getSlashMenuItems = useMemo(() => {
     // We insert it after the "Code Block" item to have the interlinking block displayed after the basic blocks
-    const defaultMenu = getDefaultReactSlashMenuItems(editor);
+    const defaultMenu = getDefaultReactSlashMenuItems(editor).filter(
+      (item) =>
+        !/^(toggle_)?heading_[4-6]$/.test(
+          (item as DefaultReactSuggestionItem & { key: string }).key,
+        ),
+    );
 
     const combinedMenu = combineByGroup(
       defaultMenu,

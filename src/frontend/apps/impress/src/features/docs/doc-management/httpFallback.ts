@@ -26,12 +26,15 @@ export class HttpFallback {
     private awareness: Awareness | undefined,
     private onSync: () => void,
     private onRefused: () => void,
+    private readOnly = awareness === undefined,
+    private pollInterval = POLL_INTERVAL_MS,
+    private send: typeof fetch = fetch,
   ) {
     doc.on('update', this.onUpdate);
   }
 
   private onUpdate = (update: Uint8Array, origin: unknown) => {
-    if (origin !== this && this.awareness) {
+    if (origin !== this && !this.readOnly) {
       this.pending.push(update);
       if (this.active && !this.abort) {
         this.schedule(1000);
@@ -45,7 +48,7 @@ export class HttpFallback {
   }
 
   private async request(method: 'GET' | 'PATCH', body?: Uint8Array) {
-    const response = await fetch(this.url, {
+    const response = await this.send(this.url, {
       method,
       credentials: 'include',
       signal: this.abort?.signal,
@@ -55,11 +58,7 @@ export class HttpFallback {
       }),
     });
     if (!response.ok) {
-      if (
-        response.status >= 400 &&
-        response.status < 500 &&
-        response.status !== 429
-      ) {
+      if ([401, 403, 404].includes(response.status)) {
         this.disconnect();
         this.onRefused();
       }
@@ -84,13 +83,17 @@ export class HttpFallback {
     const updates = this.pending.splice(0);
     try {
       // Readers cannot PATCH; the websocket and backend enforce their rights.
-      if (this.awareness && this.active) {
+      if (!this.readOnly && this.active) {
         const update = updates.length
           ? Y.mergeUpdates(updates.map((item) => new Uint8Array(item)))
           : undefined;
         const body = encodeAny({
           ...(update && update.byteLength > 2 && { update }),
-          awareness: encodeAwarenessUpdate(this.awareness, [this.doc.clientID]),
+          ...(this.awareness && {
+            awareness: encodeAwarenessUpdate(this.awareness, [
+              this.doc.clientID,
+            ]),
+          }),
         });
         await this.request('PATCH', body);
       }
@@ -126,10 +129,10 @@ export class HttpFallback {
       if (this.active && !this.abort) {
         this.schedule(
           this.failures
-            ? Math.min(POLL_INTERVAL_MS * 2 ** (this.failures - 1), 60_000)
+            ? Math.min(this.pollInterval * 2 ** (this.failures - 1), 60_000)
             : this.pending.length
               ? 1000
-              : POLL_INTERVAL_MS,
+              : this.pollInterval,
         );
       }
     }

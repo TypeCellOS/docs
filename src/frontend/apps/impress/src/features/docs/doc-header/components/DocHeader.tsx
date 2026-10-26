@@ -1,11 +1,12 @@
 import { Button } from '@gouvfr-lasuite/ui-components';
-import { useEffect, useRef } from 'react';
+import { MouseEvent, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { css } from 'styled-components';
 
 import RemoveEmojiSVG from '@/assets/icons/ui-kit/face-remove.svg';
 import AddEmojiSVG from '@/assets/icons/ui-kit/face.svg';
-import { Box, HorizontalSeparator } from '@/components';
+import { Box, EmojiPicker, HorizontalSeparator } from '@/components';
+import { getEmojidata } from '@/components/Emoji/initEmojiCallout';
 import {
   Doc,
   getEmojiAndTitle,
@@ -13,6 +14,7 @@ import {
   useDocUtils,
 } from '@/docs/doc-management';
 import { useIsOffline } from '@/features/service-worker/hooks/useOffline';
+import { useFocusStore } from '@/stores';
 
 import { AlertOffline } from './AlertOffline';
 import { AlertRestore } from './AlertRestore';
@@ -34,6 +36,39 @@ export const DocHeader = ({ doc }: DocHeaderProps) => {
   const { isTopRoot } = useDocUtils(doc);
   const displayEmojiButton = doc.abilities.partial_update && !isTopRoot;
   const latestTitleRef = useRef(doc.title ?? '');
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const { addLastFocus, restoreFocus } = useFocusStore();
+
+  const closeEmojiPicker = () => {
+    setIsEmojiPickerOpen(false);
+    restoreFocus();
+  };
+
+  const onEmojiSelect = ({ native }: { native: string }) => {
+    const today = new Date();
+    const isAprilFools = today.getMonth() === 3 && today.getDate() === 1;
+    if (isAprilFools) {
+      updateDocEmoji(doc.id, latestTitleRef.current, '🐟');
+      closeEmojiPicker();
+      return;
+    }
+
+    updateDocEmoji(doc.id, latestTitleRef.current, native);
+    closeEmojiPicker();
+  };
+
+  const handleEmojiButtonClick = (
+    event: MouseEvent<HTMLButtonElement> | MouseEvent<HTMLAnchorElement>,
+  ) => {
+    if (emoji) {
+      updateDocEmoji(doc.id, latestTitleRef.current, '');
+      return;
+    }
+
+    event.stopPropagation();
+    addLastFocus(event.currentTarget);
+    setIsEmojiPickerOpen(true);
+  };
 
   useEffect(() => {
     latestTitleRef.current = doc.title ?? '';
@@ -43,7 +78,10 @@ export const DocHeader = ({ doc }: DocHeaderProps) => {
     <>
       <Box
         $width="100%"
-        aria-label={t('It is the card information about the document.')}
+        aria-label={t('It is the card information about the document.', {
+          description:
+            'Accessible name of the document header information block',
+        })}
         className="--docs--doc-header"
         $minHeight="125px"
         $css={css`
@@ -71,24 +109,22 @@ export const DocHeader = ({ doc }: DocHeaderProps) => {
           {isOffline && <AlertOffline />}
         </Box>
         <Box $gap="sm">
-          <Box>
+          <Box $position="relative">
             {displayEmojiButton && (
               <Button
                 className="--docs--doc-header-emoji-button"
                 size="nano"
-                onClick={() => {
-                  const today = new Date();
-                  const isAprilFools =
-                    today.getMonth() === 3 && today.getDate() === 1;
+                onClick={handleEmojiButtonClick}
+                aria-expanded={emoji ? undefined : isEmojiPickerOpen}
+                aria-label={
                   emoji
-                    ? updateDocEmoji(doc.id, latestTitleRef.current, '')
-                    : updateDocEmoji(
-                        doc.id,
-                        latestTitleRef.current,
-                        isAprilFools ? '🐟' : '📄',
-                      );
-                }}
-                aria-label={emoji ? t('Remove emoji') : t('Add emoji')}
+                    ? t('Remove emoji', {
+                        description: 'Button to remove the emoji of a document',
+                      })
+                    : t('Add emoji', {
+                        description: 'Button to add an emoji to a document',
+                      })
+                }
                 color="neutral"
                 variant="tertiary"
                 icon={
@@ -100,8 +136,22 @@ export const DocHeader = ({ doc }: DocHeaderProps) => {
                 }
                 style={{ width: 'fit-content' }}
               >
-                {emoji ? t('Remove emoji') : t('Add emoji')}
+                {emoji
+                  ? t('Remove emoji', {
+                      description: 'Button to remove the emoji of a document',
+                    })
+                  : t('Add emoji', {
+                      description: 'Button to add an emoji to a document',
+                    })}
               </Button>
+            )}
+            {isEmojiPickerOpen && (
+              <EmojiPicker
+                emojiData={getEmojidata()}
+                onClickOutside={closeEmojiPicker}
+                onEmojiSelect={onEmojiSelect}
+                withOverlay={true}
+              />
             )}
           </Box>
           <DocTitle

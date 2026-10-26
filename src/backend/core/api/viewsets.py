@@ -27,7 +27,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.http import content_disposition_header
-from django.utils.text import capfirst, slugify
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 import requests
@@ -58,6 +58,12 @@ from core.services.converter_services import (
     ServiceUnavailableError as YProviderServiceUnavailableError,
 )
 from core.services.converter_services import (
+    UnprocessableContentError as YProviderUnprocessableContentError,
+)
+from core.services.converter_services import (
+    UnsupportedMediaTypeError as YProviderUnsupportedMediaTypeError,
+)
+from core.services.converter_services import (
     ValidationError as YProviderValidationError,
 )
 from core.services.jwt_services import (
@@ -70,7 +76,7 @@ from core.services.search_indexers import (
 )
 from core.services.yhub_services import YHubError, YHubService
 from core.tasks.access import reset_service_connections_on_commit
-from core.tasks.documents import sync_service_deletions_in_cascade
+from core.tasks.documents import sync_service_restorations_in_cascade
 from core.tasks.mail import send_ask_for_access_mail, send_mention_notification_mail
 from core.tasks.search import trigger_batch_document_indexer
 from core.utils.analytics import PosthogEventName, posthog_capture
@@ -88,6 +94,7 @@ from .filters import (
     UserSearchFilter,
 )
 from .throttling import (
+    DocumentAccessThrottle,
     DocumentThrottle,
     UserListThrottleBurst,
     UserListThrottleSustained,
@@ -741,9 +748,21 @@ class DocumentViewSet(
                 self.request.user,
                 {"content_type": uploaded_file.content_type},
             )
+        except YProviderUnsupportedMediaTypeError as err:
+            logger.error("could not convert file content with error: %s", err)
+            exc = drf.exceptions.APIException({"file": ["File type is not supported"]})
+            exc.status_code = status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+            raise exc from err
+        except YProviderUnprocessableContentError as err:
+            logger.error("could not convert file content with error: %s", err)
+            exc = drf.exceptions.APIException(
+                {"file": ["Could not process file content"]}
+            )
+            exc.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+            raise exc from err
         except ConversionError as err:
             logger.error("could not convert file content with error: %s", err)
-            raise drf.exceptions.ValidationError(
+            raise drf.exceptions.APIException(
                 {"file": ["Could not convert file content"]}
             ) from err
 
@@ -795,13 +814,7 @@ class DocumentViewSet(
         """Override to implement a soft delete instead of dumping the record in database."""
         instance.soft_delete()
 
-        # the collaboration server holds the content: until it is told, it goes
-        # on serving the document to the clients editing it. On commit, because
-        # the task reads back what was just written to know what to report — it
-        # would find the document alive and restore it instead
-        transaction.on_commit(
-            partial(sync_service_deletions_in_cascade.delay, str(instance.id))
-        )
+        reset_service_connections_on_commit(instance.pk)
 
         posthog_capture(
             PosthogEventName.DOC_DELETED, self.request.user, {}, document=instance
@@ -1095,11 +1108,12 @@ class DocumentViewSet(
         except RuntimeError as err:
             raise drf.exceptions.ValidationError({"detail": str(err)}) from err
 
-        # the counterpart of the deletion: the same walk puts back the content
-        # of the documents that came back with this one, and it reads the
-        # restored state back, hence on commit as well
+        # A soft deletion is no longer reported: the room should never be
+        # tombstoned, and this safety net is what lifts one should any be laid
+        # out of band. Documents of the subtree deleted on their own stay
+        # deleted, and the restored state is read back: on commit.
         transaction.on_commit(
-            partial(sync_service_deletions_in_cascade.delay, str(document.id))
+            partial(sync_service_restorations_in_cascade.delay, str(document.id))
         )
 
         return drf_response.Response(
@@ -1393,6 +1407,26 @@ class DocumentViewSet(
 
         return drf_response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    @staticmethod
+    def _get_copy_title(title):
+        """
+        Return the title of a copy of a document titled `title`.
+
+        The title of the copy is marked as a copy at its end. If it then exceeds
+        the maximum length of a title, the original title is truncated, with an
+        ellipsis, so that the copy marker is kept.
+        """
+        max_length = models.Document._meta.get_field("title").max_length  # noqa: SLF001
+        copy_title = _("{title} (copy)").format(title=title)
+        excess = len(copy_title) - max_length
+        if excess <= 0:
+            return copy_title
+
+        ellipsis = "..."
+        kept_length = max(len(title) - excess - len(ellipsis), 0)
+        truncated_title = f"{title[:kept_length].rstrip()}{ellipsis}"
+        return _("{title} (copy)").format(title=truncated_title)[:max_length]
+
     def _duplicate_document_structure(
         self,
         document_to_duplicate,
@@ -1436,7 +1470,17 @@ class DocumentViewSet(
             if with_accesses
             else {}
         )
-        title = capfirst(_("copy of {title}").format(title=document_to_duplicate.title))
+        if new_parent is None:
+            # Only the top duplicate is marked as a copy, at the end of its title
+            # so that a leading emoji, used as the document icon, stays first.
+            title = (
+                self._get_copy_title(document_to_duplicate.title)
+                if document_to_duplicate.title
+                else _("Untitled document (copy)")
+            )
+        else:
+            # Descendants keep their title untouched, untitled ones included
+            title = document_to_duplicate.title
         # If parent_duplicate is provided we must add the duplicated document as a child.
         # No retry here: the parent was created by this very transaction, nobody
         # else can add children under it, so its child paths cannot collide
@@ -1897,7 +1941,7 @@ class DocumentViewSet(
 
         # saving a changed link definition is what tells the collaboration
         # server to re-check the connections of the document and its descendants
-        serializer.save()
+        serializer.save(update_fields=["link_reach", "link_role", "updated_at"])
 
         return drf.response.Response(serializer.data, status=drf.status.HTTP_200_OK)
 
@@ -2024,7 +2068,10 @@ class DocumentViewSet(
 
         # Make the attachment readable by document readers
         document.attachments.append(key)
-        document.save()
+        # Only the attachments column is written: the instance was loaded at the
+        # start of the request and an overlapping change must not be undone
+        # (e.g. a withdrawal of the link configuration committed in between).
+        document.save(update_fields=["attachments", "updated_at"])
 
         malware_detection.analyse_file(key, document_id=document.id)
 
@@ -2085,7 +2132,12 @@ class DocumentViewSet(
             logger.debug("Failed to extract parameters from subrequest URL: %s", exc)
             raise drf.exceptions.PermissionDenied() from exc
 
-    @drf.decorators.action(detail=False, methods=["get"], url_path="media-auth")
+    @drf.decorators.action(
+        detail=False,
+        methods=["get"],
+        url_path="media-auth",
+        throttle_scope="media_auth",
+    )
     def media_auth(self, request, *args, **kwargs):
         """
         This view is used by an Nginx subrequest to control access to a document's
@@ -2666,6 +2718,7 @@ class DocumentAccessViewSet(
         "document__depth",
     )
     resource_field_name = "document"
+    throttle_classes = [DocumentAccessThrottle]
     throttle_scope = "document_access"
 
     @cached_property
@@ -3073,6 +3126,9 @@ class ConfigView(drf.views.APIView):
             "AI_FEATURE_BLOCKNOTE_ENABLED",
             "AI_FEATURE_LEGACY_ENABLED",
             "API_USERS_SEARCH_QUERY_MIN_LENGTH",
+            "COLLABORATION_HTTP_FALLBACK_AWARENESS_ENABLED",
+            "COLLABORATION_HTTP_FALLBACK_JSON_ENABLED",
+            "COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL",
             "COLLABORATION_LOCAL_DOC_RETENTION_DAYS",
             "COLLABORATION_VERSION_GRANULARITY_MS",
             "COLLABORATION_WS_URL",

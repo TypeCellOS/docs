@@ -118,7 +118,13 @@ open one socket with a cookie of the manifest and read its logs for the
 store makes the clients anonymous, which looks like success on public
 documents. (In this repository's compose stack, the `Development`
 configuration keeps its sessions in another Redis database than `LoadTest`:
-mint with `REDIS_URL=redis://redis:6379/2` there.)
+mint with `REDIS_URL=redis://redis:6379/2` there.) One thing changed with
+the session-cookie fast path: a client holding no session cookie at all is
+resolved to anonymous by the collaboration server without any call. A
+manifest's clients always send the session cookie, so a bad manifest still
+costs one `users_me` call per client and still shows up as `users_me:401`
+in `yhub_backend_request_duration_seconds` — that signal stands; the
+`userid` in the collaboration server's logs tells the rest.
 
 ## Where the load comes from
 

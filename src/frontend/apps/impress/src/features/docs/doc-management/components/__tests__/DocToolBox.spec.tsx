@@ -140,6 +140,7 @@ describe('<DocToolBox /> - duplicate with children', () => {
       expect(duplicateDocMock).toHaveBeenCalledWith({
         docId: doc.id,
         canSave: doc.abilities.partial_update,
+        with_descendants: false,
       });
     });
     expect(
@@ -162,6 +163,7 @@ describe('<DocToolBox /> - duplicate with children', () => {
       expect(duplicateDocMock).toHaveBeenCalledWith({
         docId: doc.id,
         canSave: doc.abilities.partial_update,
+        with_descendants: false,
       });
     });
     expect(
@@ -184,6 +186,7 @@ describe('<DocToolBox /> - duplicate with children', () => {
       expect(duplicateDocMock).toHaveBeenCalledWith({
         docId: doc.id,
         canSave: doc.abilities.partial_update,
+        with_descendants: false,
       });
     });
     expect(

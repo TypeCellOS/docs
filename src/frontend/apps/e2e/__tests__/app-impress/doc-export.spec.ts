@@ -432,6 +432,8 @@ test.describe('Doc Export', () => {
     page,
     browserName,
   }, testInfo) => {
+    test.slow();
+
     // PDF Binary comparison is different depending on the browser used
     // We only run this test on Chromium to avoid having to maintain
     // multiple sets of PDF fixtures

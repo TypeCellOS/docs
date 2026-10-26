@@ -28,6 +28,10 @@ import {
 import {
   FloatingComposerController,
   FloatingThreadController,
+  ReactAudioBlock,
+  ReactFileBlock,
+  ReactImageBlock,
+  ReactVideoBlock,
   ThreadsSidebar,
   useCreateBlockNote,
 } from '@blocknote/react';
@@ -38,7 +42,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { Box, TextErrors } from '@/components';
+import { Box } from '@/components';
 import { useConfig } from '@/core';
 import { collaborationHttpTarget } from '@/core/config/hooks/useCollaborationUrl';
 import { useCunninghamTheme } from '@/cunningham';
@@ -96,6 +100,10 @@ const baseBlockNoteSchema = withPageBreak(
   BlockNoteSchema.create({
     blockSpecs: {
       ...defaultBlockSpecs,
+      audio: ReactAudioBlock(),
+      file: ReactFileBlock(),
+      image: ReactImageBlock(),
+      video: ReactVideoBlock(),
       callout: CalloutBlock(),
       codeBlock: createSafeCodeBlockSpec(),
       diagram: createReactDiagramBlockSpec(),
@@ -150,7 +158,7 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
       ? DEFAULT_LOCALE
       : i18n.resolvedLanguage;
 
-  const { uploadFile, errorAttachment } = useUploadFile(doc.id);
+  const { uploadFile } = useUploadFile(doc.id);
   const conf = useConfig().data;
   const { isFeatureFlagActivated } = useAnalytics();
   const aiBlockNoteAllowed = !!(
@@ -179,7 +187,11 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
   };
 
   const collabName = user?.full_name || user?.email;
-  const cursorName = collabName || t('Anonymous');
+  const cursorName =
+    collabName ||
+    t('Anonymous', {
+      description: 'Display name of a user without a known name',
+    });
   const showCursorLabels: 'always' | 'activity' | (string & {}) = 'activity';
 
   // Comments
@@ -432,15 +444,6 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
         currentUserAvatarUrl={currentUserAvatarUrl}
       />
       <DocsFindReplaceStyle />
-      {errorAttachment && (
-        <Box $margin={{ bottom: 'big', top: 'none', horizontal: 'large' }}>
-          <TextErrors
-            causes={errorAttachment.cause}
-            canClose
-            $textAlign="left"
-          />
-        </Box>
-      )}
       <BlockNoteView
         className="--docs--main-editor"
         editor={editor}
@@ -449,7 +452,9 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
         sideMenu={false}
         theme="light"
         comments={false}
-        aria-label={t('Document editor')}
+        aria-label={t('Document editor', {
+          description: 'Accessible name of the editor area',
+        })}
         // To not clipped the floating part in the editor area
         portalElements={{ default: 'body' }}
       >

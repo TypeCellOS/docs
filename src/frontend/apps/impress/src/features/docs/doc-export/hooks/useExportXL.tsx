@@ -1,5 +1,5 @@
 /**
- * This exports modules are AGPL licensed and should only
+ * These export modules are GPL licensed and should only
  * be used when the application is not published as MIT.
  */
 import { DOCXExporter } from '@blocknote/xl-docx-exporter';
@@ -18,7 +18,7 @@ import { getOdtDocsSchemaMappings } from '../mappingODT';
 import { getPdfDocsSchemaMappings } from '../mappingPDF';
 import { resolveInterlinkTitles } from '../utils';
 
-export const useExportAGPL = (doc: Doc, editor?: DocsBlockNoteEditor) => {
+export const useExportXL = (doc: Doc, editor?: DocsBlockNoteEditor) => {
   const { t } = useTranslation();
 
   const docToBlob = async (format: string, documentTitle: string) => {
@@ -76,9 +76,33 @@ export const useExportAGPL = (doc: Doc, editor?: DocsBlockNoteEditor) => {
 
   return {
     formats: [
-      { label: t('PDF'), value: 'pdf', labelDescription: t('.pdf') },
-      { label: t('Docx'), value: 'docx', labelDescription: t('.docx') },
-      { label: t('ODT'), value: 'odt', labelDescription: t('.odt') },
+      {
+        label: t('PDF', {
+          description: 'Name of the PDF file format / editor block',
+        }),
+        value: 'pdf',
+        labelDescription: t('.pdf', {
+          description: 'File extension hint of the PDF export',
+        }),
+      },
+      {
+        label: t('Docx', {
+          description: 'Name of the Microsoft Word export format',
+        }),
+        value: 'docx',
+        labelDescription: t('.docx', {
+          description: 'File extension hint of the Word export',
+        }),
+      },
+      {
+        label: t('ODT', {
+          description: 'Name of the OpenDocument text export format',
+        }),
+        value: 'odt',
+        labelDescription: t('.odt', {
+          description: 'File extension hint of the OpenDocument export',
+        }),
+      },
     ],
     docToBlob,
   };

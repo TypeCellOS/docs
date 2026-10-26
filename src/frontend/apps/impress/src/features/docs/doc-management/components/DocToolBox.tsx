@@ -24,6 +24,7 @@ import { useDuplicatedDoc } from '@/docs/doc-management/components/ConfirmationD
 import { usePresenterStore } from '@/docs/doc-presenter/stores';
 import { useDetachDoc } from '@/docs/doc-tree/api/useDetach';
 import {
+  addToNumchildInTree,
   deleteDocFromTreeAfterNavigate,
   useTreeContextOrNull,
 } from '@/docs/doc-tree/utils';
@@ -280,7 +281,13 @@ const DocToolBoxComponent = ({
     },
     { type: 'separator' },
     {
-      label: doc.is_favorite ? t('Unstar') : t('Star'),
+      label: doc.is_favorite
+        ? t('Unstar', {
+            description: 'Menu action to remove a document from favorites',
+          })
+        : t('Star', {
+            description: 'Menu action to add a document to favorites',
+          }),
       icon: doc.is_favorite ? (
         <StarSlashIcon width={18} height={18} aria-hidden="true" />
       ) : (
@@ -311,13 +318,16 @@ const DocToolBoxComponent = ({
           duplicateDoc({
             docId: doc.id,
             canSave: doc.abilities.partial_update,
+            with_descendants: duplicateWithChildrenAllowed,
           });
         }
       },
       isHidden: !doc.abilities.duplicate,
     },
     {
-      label: t('Move to my docs'),
+      label: t('Move to my docs', {
+        description: "Menu action to move a document into the user's own docs",
+      }),
       isHidden: isTopParent || doc.user_role !== Role.OWNER,
       icon: <DocMoveOutIcon width={18} height={18} aria-hidden="true" />,
       callback: () => {
@@ -343,7 +353,9 @@ const DocToolBoxComponent = ({
       },
     },
     {
-      label: t('Move into a doc'),
+      label: t('Move into a doc', {
+        description: 'Menu action to move a document under another doc',
+      }),
       icon: <DocMoveInIcon width={18} height={18} aria-hidden="true" />,
       callback: () => {
         setIsModalMoveOpen(true);
@@ -408,8 +420,13 @@ const DocToolBoxComponent = ({
       >
         <Button
           aria-label={t('Open the document options: {{title}}', {
+            description: 'Accessible name of the document actions menu button',
             title: doc.title || untitledDocument,
           })}
+          // `DropdownMenu` does not use React Aria's MenuTrigger, so nothing
+          // else exposes this button as a menu button.
+          aria-haspopup="menu"
+          aria-expanded={openDropdown}
           size="small"
           icon={<MoreIcon width={24} height={24} aria-hidden="true" />}
           color="neutral"
@@ -453,6 +470,10 @@ const DocToolBoxComponent = ({
             if (isTopParent && isCurrentDoc) {
               void router.push(`/`);
             } else if (parentId) {
+              // In place: `updateNode` would bring back the doc deleted below
+              addToNumchildInTree(treeContext, String(parentId), -1, {
+                keepFocus: true,
+              });
               deleteDocFromTreeAfterNavigate(
                 treeContext,
                 doc.id,

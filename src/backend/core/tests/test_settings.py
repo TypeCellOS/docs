@@ -5,9 +5,24 @@ Unit tests for the User model
 import os
 import tempfile
 
+from django.conf import settings
+
 import pytest
 
 from impress.settings import Base, Production
+
+
+def test_session_cookie_name_matches_yhub_contract():
+    """
+    The yhub collaboration server (`src/yhub-server/src/config.ts`) hardcodes
+    the same session cookie name to decide whether a caller may hold a session
+    at all: a caller whose cookies carry no `docs_sessionid` is resolved to
+    anonymous there without calling `users/me`. Renaming the cookie on the
+    backend side alone would silently degrade every signed-in user to
+    anonymous, so the contract is pinned on both ends.
+    """
+
+    assert settings.SESSION_COOKIE_NAME == "docs_sessionid"
 
 
 def test_invalid_settings_oidc_email_configuration():
@@ -45,6 +60,34 @@ def test_settings_yhub_reset_connections_batch_size_zero():
         TestSettings().post_setup()
 
     assert str(excinfo.value) == "YHUB_RESET_CONNECTIONS_BATCH_SIZE must be at least 1."
+
+
+def test_settings_collaboration_http_fallback_sync_interval_too_low():
+    """A polling interval under 5 seconds would flood the backend and is refused."""
+
+    class TestSettings(Base):
+        """Fake test settings."""
+
+        COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL = 4999
+
+    with pytest.raises(ValueError) as excinfo:
+        TestSettings().post_setup()
+
+    assert str(excinfo.value) == (
+        "COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL must be at least 5000 "
+        "(milliseconds)."
+    )
+
+
+def test_settings_collaboration_http_fallback_sync_interval_minimum():
+    """The minimum polling interval itself is accepted."""
+
+    class TestSettings(Base):
+        """Fake test settings."""
+
+        COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL = 5000
+
+    TestSettings.post_setup()
 
 
 def test_settings_psycopg_pool_not_enabled():

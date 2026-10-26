@@ -3,7 +3,6 @@ import {
   TreeDataItem,
   TreeView,
   TreeViewMoveResult,
-  useResponsive,
   useTreeContext,
 } from '@gouvfr-lasuite/ui-components';
 import { useRouter } from 'next/router';
@@ -11,15 +10,21 @@ import { RefObject, memo, useCallback, useEffect } from 'react';
 import { NodeApi } from 'react-arborist';
 
 import { Overlayer } from '@/components';
-import { CLASS_DOC_TITLE } from '@/docs/doc-header';
 import { Doc, useMoveDoc } from '@/docs/doc-management';
+import { focusMainContentStart } from '@/layouts/utils';
+import { useResponsiveStore } from '@/stores/useResponsiveStore';
 
-import { isDocNode, isWithinTreeItemActions } from '../utils';
+import {
+  addToNumchildInTree,
+  isDocNode,
+  isWithinTreeItemActions,
+} from '../utils';
 
 import { DocSubPageItem } from './DocSubPageItem';
 
 interface DocTreeSubPagesProps {
-  doc: Doc;
+  canMoveInto: boolean;
+  isDeleted: boolean;
   treeRoot: HTMLElement;
   initialOpenState: OpenMap;
   rootNodeId: string;
@@ -27,13 +32,14 @@ interface DocTreeSubPagesProps {
 }
 
 export const DocTreeSubpages = memo(function DocTreeSubpages({
-  doc,
+  canMoveInto,
+  isDeleted,
   treeRoot,
   initialOpenState,
   rootNodeId,
   rootItemRef,
 }: DocTreeSubPagesProps) {
-  const { isDesktop } = useResponsive();
+  const { hasCoarsePointer } = useResponsiveStore();
   const treeContext = useTreeContext<Doc | null>();
   const { mutateAsync: moveDoc } = useMoveDoc();
   const { query } = useRouter();
@@ -45,12 +51,37 @@ export const DocTreeSubpages = memo(function DocTreeSubpages({
    * attribute is corrected here. React leaves it alone afterwards: it only
    * writes an attribute when the rendered prop value changes, and this one
    * stays `0` for the lifetime of the container.
+   *
+   * It also hardcodes `role="tree"`, but `DocTree` already owns that role and a
+   * tree cannot contain another one: the sub pages are the root item's group.
    */
   useEffect(() => {
-    treeRoot
-      .querySelector<HTMLElement>('.c__tree-view--container [role="tree"]')
-      ?.setAttribute('tabindex', '-1');
+    const container = treeRoot.querySelector<HTMLElement>(
+      '.c__tree-view--container [role="tree"]',
+    );
+    container?.setAttribute('tabindex', '-1');
+    container?.setAttribute('role', 'group');
   }, [treeRoot]);
+
+  /**
+   * Tell react-arborist the focus left, so it stops considering its last row
+   * focused. Opening a doc reloads the tree, and remounting a row it still
+   * believes is focused makes it take the focus back from the doc title.
+   *
+   * Its own container does the same, but on a React `onBlur` that never fires
+   * when the row is unmounted along with the tree.
+   */
+  const treeApiRef = treeContext?.treeApiRef;
+  useEffect(() => {
+    const handleFocusOut = (event: FocusEvent) => {
+      if (!treeRoot.contains(event.relatedTarget as Node | null)) {
+        treeApiRef?.current?.onBlur();
+      }
+    };
+
+    treeRoot.addEventListener('focusout', handleFocusOut);
+    return () => treeRoot.removeEventListener('focusout', handleFocusOut);
+  }, [treeRoot, treeApiRef]);
 
   const handleMove = useCallback(
     async (result: TreeViewMoveResult) => {
@@ -61,20 +92,31 @@ export const DocTreeSubpages = memo(function DocTreeSubpages({
         skipTreeInvalidation: true,
       });
 
+      // The tree holds its own `numchild` of the parents, which the actions
+      // of their item (e.g. duplicate) read. Updated in place and before the
+      // move, as `updateNode` would resurrect the moved doc under its old parent.
+      const rootId = treeContext?.root?.id;
+      const oldParentId = result.oldParentId ?? rootId;
+      const newParentId = result.newParentId ?? rootId;
+      if (oldParentId && newParentId && oldParentId !== newParentId) {
+        addToNumchildInTree(treeContext, oldParentId, -1, { keepFocus: true });
+        addToNumchildInTree(treeContext, newParentId, 1, { keepFocus: true });
+      }
+
       treeContext?.treeData.handleMove(result);
     },
-    [moveDoc, treeContext?.treeData],
+    [moveDoc, treeContext],
   );
 
   const canDrop = useCallback(
     ({ parentNode }: { parentNode: NodeApi<TreeDataItem<Doc>> | null }) => {
       const parentValue = parentNode?.data.value;
       if (!parentValue || !isDocNode(parentValue)) {
-        return doc.abilities.move && isDesktop;
+        return canMoveInto && !hasCoarsePointer;
       }
-      return parentValue.abilities.move && isDesktop;
+      return parentValue.abilities.move && !hasCoarsePointer;
     },
-    [doc.abilities.move, isDesktop],
+    [canMoveInto, hasCoarsePointer],
   );
 
   const canDrag = useCallback(
@@ -82,9 +124,9 @@ export const DocTreeSubpages = memo(function DocTreeSubpages({
       if (!isDocNode(node.value)) {
         return false;
       }
-      return node.value.abilities.move && isDesktop;
+      return node.value.abilities.move && !hasCoarsePointer;
     },
-    [isDesktop],
+    [hasCoarsePointer],
   );
 
   const handleRowKeyDown = useCallback(
@@ -127,10 +169,10 @@ export const DocTreeSubpages = memo(function DocTreeSubpages({
       }
 
       // Already on this document: move on to its title rather than reloading.
-      const treeItem = e.currentTarget.querySelector('[role="treeitem"]');
-      if (treeItem?.getAttribute('aria-selected') === 'true') {
+      // react-arborist puts `role="treeitem"` on the row itself, not inside it.
+      if (e.currentTarget.getAttribute('aria-selected') === 'true') {
         e.preventDefault();
-        document.querySelector<HTMLElement>(`.${CLASS_DOC_TITLE}`)?.focus();
+        focusMainContentStart();
         return;
       }
 
@@ -142,7 +184,7 @@ export const DocTreeSubpages = memo(function DocTreeSubpages({
   );
 
   return (
-    <Overlayer isOverlay={doc.deleted_at != null} inert>
+    <Overlayer isOverlay={isDeleted} inert>
       <TreeView
         dndRootElement={treeRoot}
         initialOpenState={initialOpenState}

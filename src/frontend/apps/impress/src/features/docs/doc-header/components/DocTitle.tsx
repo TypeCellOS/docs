@@ -43,12 +43,20 @@ export const DocTitleText = () => {
   const displayTitle = titleWithoutEmoji || untitledDocument;
 
   return (
-    <Box className={CLASS_DOC_TITLE} $direction="row" $align="center">
+    <Box
+      className={CLASS_DOC_TITLE}
+      $direction="row"
+      $align="center"
+      $minWidth="0"
+    >
       <Text
         as="h2"
         $margin="none"
         $size={isMobile ? 'h4' : 'h2'}
         $display="unset"
+        $css={css`
+          overflow-wrap: anywhere;
+        `}
       >
         {emoji && <span aria-hidden="true">{emoji} </span>}
         {displayTitle}
@@ -98,7 +106,9 @@ const DocTitleEmojiPicker = ({ doc }: DocTitleProps) => {
             width="25px"
             height="25px"
             aria-hidden="true"
-            aria-label={t('Simple document icon')}
+            aria-label={t('Simple document icon', {
+              description: 'Accessible name of the default icon of a document',
+            })}
             color={colorsTokens['brand-500']}
           />
         }
@@ -217,6 +227,7 @@ const DocTitleInput = ({ doc, onTitleUpdate }: DocTitleProps) => {
       <Box
         ref={wrapperRef}
         $flex="1"
+        $minWidth="0"
         $css={css`
           cursor: text;
         `}
@@ -244,7 +255,7 @@ const DocTitleInput = ({ doc, onTitleUpdate }: DocTitleProps) => {
           defaultValue={titleDisplay || undefined}
           onKeyDownCapture={handleKeyDown}
           suppressContentEditableWarning={true}
-          aria-label={`${t('Document title')}`}
+          aria-label={`${t('Document title', { description: 'Accessible name of the editable document title' })}`}
           aria-multiline={false}
           onBlurCapture={(event) =>
             handleTitleSubmit(event.target.textContent || '')
@@ -267,6 +278,7 @@ const DocTitleInput = ({ doc, onTitleUpdate }: DocTitleProps) => {
             };
             font-weight: 700;
             outline: none;
+            overflow-wrap: anywhere;
           `}
           $width="fit-content"
         >

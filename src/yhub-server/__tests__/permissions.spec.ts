@@ -217,10 +217,42 @@ describe('everything the browser must not reach', () => {
     'reset-connections',
     'restore-ydoc',
     'reset-ydoc',
+    // the built-ins yhub 0.9.1 and 0.10.1 added: named versions, and the
+    // listing of the documents an org changed
+    'version',
+    'updated',
     'some-endpoint-added-later',
   ])('refuses %s to an editor — there is no "*" fallback', (name) => {
     expect(grants(editor, { endpoint: { [name]: '-r--' } })).toBe(false);
     expect(grants(editor, { endpoint: { [name]: 'c---' } })).toBe(false);
+  });
+
+  // yhub 0.9.1 added `version` (crud over named versions) and `publish` to the
+  // history facet. Docs builds its version panel from the activity alone, so
+  // neither is granted: a named version would outlive the access that wrote it.
+  it('grants no named versions to anyone, an editor included', () => {
+    for (const who of [reader, editor]) {
+      expect(
+        grants(who, { history: { from: ACCESS_SINCE, version: '-r--' } }),
+      ).toBe(false);
+      expect(
+        grants(who, { history: { from: ACCESS_SINCE, version: 'c---' } }),
+      ).toBe(false);
+      expect(
+        grants(who, { history: { from: ACCESS_SINCE, publish: true } }),
+      ).toBe(false);
+    }
+  });
+
+  it('normalizes the two new history keys to nothing granted', () => {
+    // what yhub hands a handler as `req.permissions.history` since 0.9.1
+    expect(editor.history).toEqual({
+      from: ACCESS_SINCE,
+      rollback: true,
+      prune: false,
+      version: '----',
+      publish: false,
+    });
   });
 });
 
@@ -240,6 +272,16 @@ describe('the admin token', () => {
     expect(grants(admin, { delete: ['soft'] })).toBe(true);
     expect(grants(admin, { delete: ['hard'] })).toBe(false);
     expect(grants(admin, { history: { from: 0, prune: true } })).toBe(false);
+  });
+
+  it('reaches the named-version route but is granted no version in it', () => {
+    // the `'*'` endpoint fallback covers yhub 0.9.1's `version` route, and the
+    // history facet is what still refuses every verb on it
+    expect(grants(admin, { endpoint: { version: 'crud' } })).toBe(true);
+    expect(grants(admin, { history: { from: 0, version: '-r--' } })).toBe(
+      false,
+    );
+    expect(grants(admin, { history: { from: 0, publish: true } })).toBe(false);
   });
 });
 

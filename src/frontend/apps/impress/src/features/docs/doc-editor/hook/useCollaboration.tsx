@@ -118,6 +118,9 @@ export const useCollaboration = (room: string, readOnly = false) => {
 
     const newProvider = createProvider(collaborationUrl, room, undefined, {
       readOnly,
+      httpJson: config?.COLLABORATION_HTTP_FALLBACK_JSON_ENABLED,
+      httpSyncInterval: config?.COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL,
+      httpAwareness: config?.COLLABORATION_HTTP_FALLBACK_AWARENESS_ENABLED,
     });
     setBroadcastProvider(newProvider);
   }, [
@@ -126,6 +129,9 @@ export const useCollaboration = (room: string, readOnly = false) => {
     createProvider,
     room,
     readOnly,
+    config?.COLLABORATION_HTTP_FALLBACK_JSON_ENABLED,
+    config?.COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL,
+    config?.COLLABORATION_HTTP_FALLBACK_AWARENESS_ENABLED,
     setBroadcastProvider,
   ]);
 

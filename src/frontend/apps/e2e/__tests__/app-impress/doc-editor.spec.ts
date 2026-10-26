@@ -63,6 +63,43 @@ test.describe('Doc Editor', () => {
       toolbar.locator('button[data-test="convertMarkdown"]'),
     ).toBeVisible();
 
+    // Only heading levels 1 to 3 are offered in the block type select
+    await toolbar.getByRole('button', { name: 'Paragraph' }).click();
+    for (const level of [1, 2, 3]) {
+      await expect(
+        toolbar.getByRole('menuitem', {
+          name: `Heading ${level}`,
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        toolbar.getByRole('menuitem', { name: `Toggle Heading ${level}` }),
+      ).toBeVisible();
+    }
+    for (const level of [4, 5, 6]) {
+      await expect(
+        toolbar.getByRole('menuitem', { name: `Heading ${level}` }),
+      ).toBeHidden();
+    }
+    await page.keyboard.press('Escape');
+
+    // Same in the slash menu
+    const { suggestionMenu } = await openSuggestionMenu({ page });
+    await page.keyboard.type('heading');
+    for (const level of [1, 2, 3]) {
+      await expect(
+        suggestionMenu.getByText(`Heading ${level}`, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        suggestionMenu.getByText(`Toggle Heading ${level}`, { exact: true }),
+      ).toBeVisible();
+    }
+    for (const level of [4, 5, 6]) {
+      await expect(
+        suggestionMenu.getByText(`Heading ${level}`, { exact: true }),
+      ).toBeHidden();
+    }
+
     await page.keyboard.press('Escape');
 
     await page.locator('.bn-block-outer').last().click();
@@ -356,20 +393,20 @@ test.describe('Doc Editor', () => {
     const fileChooser = await fileChooserPromise;
     await fileChooser.setFiles(path.join(__dirname, 'assets/test.html'));
 
-    await expect(editor.getByText('Analyzing file...')).toBeVisible();
+    await expect(editor.getByText('Analyzing the file')).toBeVisible();
 
     // To be sure the retry happens even after a page reload
     await goToGridDoc(page, {
       title: randomDoc,
     });
 
-    await expect(editor.getByText('Analyzing file...')).toBeVisible();
+    await expect(editor.getByText('Analyzing the file')).toBeVisible();
 
     // The retry takes a few seconds
     await expect(editor.getByText('test.html')).toBeVisible({
       timeout: 7000,
     });
-    await expect(editor.getByText('Analyzing file...')).toBeHidden();
+    await expect(editor.getByText('Analyzing the file')).toBeHidden();
   });
 
   test('it checks if callout custom block', async ({ page, browserName }) => {

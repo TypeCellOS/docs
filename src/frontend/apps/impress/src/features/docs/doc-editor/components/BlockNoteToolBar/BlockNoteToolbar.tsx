@@ -40,7 +40,9 @@ export const BlockNoteToolbar = ({ aiAllowed }: { aiAllowed: boolean }) => {
 
   const toolbarItems = useMemo(() => {
     let toolbarItems = getFormattingToolbarItems([
-      ...blockTypeSelectItems(editor),
+      ...blockTypeSelectItems(editor).filter(
+        (item) => item.type !== 'heading' || Number(item.props?.level) <= 3,
+      ),
       getCalloutFormattingToolbarItems(t),
       ...getMathBlockTypeSelectItems(editor),
       ...getDiagramBlockTypeSelectItems(editor),

@@ -30,7 +30,7 @@ test.describe('Doc Trashbin', () => {
     await addNewMember(page, 0, 'Editor');
     await page.getByRole('button', { name: 'close' }).click();
 
-    await page.getByRole('button', { name: 'Back to homepage' }).click();
+    await page.getByRole('link', { name: 'Back to homepage' }).click();
 
     // Delete the first document - Is not displayed
     await page.getByRole('link', { name: 'My docs' }).click();
@@ -108,7 +108,7 @@ test.describe('Doc Trashbin', () => {
     await row2Restored.getByRole('link', { name: /Open document/ }).click();
 
     await verifyDocName(page, title2);
-    await page.getByRole('button', { name: 'Back to homepage' }).click();
+    await page.getByRole('link', { name: 'Back to homepage' }).click();
     await expect(row2.getByText(title2)).toBeVisible();
     await expect(
       row2.getByRole('button', {
@@ -149,7 +149,7 @@ test.describe('Doc Trashbin', () => {
     const docsGrid = page.getByTestId('docs-grid');
 
     await clickInEditorMenu(page, 'Star');
-    await page.getByRole('button', { name: 'Back to homepage' }).click();
+    await page.getByRole('link', { name: 'Back to homepage' }).click();
     await page.getByRole('link', { name: 'Starred', exact: true }).click();
     await expect(docsGrid.getByText(subDocName)).toBeVisible();
     await page.getByText(subDocName).click();
@@ -159,7 +159,7 @@ test.describe('Doc Trashbin', () => {
     await page.getByRole('button', { name: 'Delete document' }).click();
     await verifyDocName(page, topParent);
 
-    await page.getByRole('button', { name: 'Back to homepage' }).click();
+    await page.getByRole('link', { name: 'Back to homepage' }).click();
     await expect(docsGrid.getByText(subDocName)).toBeHidden();
     await page.getByRole('link', { name: 'Trashbin' }).click();
 
@@ -208,7 +208,7 @@ test.describe('Doc Trashbin', () => {
     );
     await expect(page.getByRole('button', { name: 'Share' })).toBeEnabled();
     await expect(docTree.getByText(topParent)).toBeVisible();
-    await page.getByRole('button', { name: 'Back to homepage' }).click();
+    await page.getByRole('link', { name: 'Back to homepage' }).click();
     await page.getByRole('link', { name: 'Starred', exact: true }).click();
     await expect(docsGrid.getByText(subDocName)).toBeVisible();
   });

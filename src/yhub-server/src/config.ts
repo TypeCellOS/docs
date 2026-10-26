@@ -58,6 +58,15 @@ export const MIN_MESSAGE_LIFETIME_MS = intEnv(
 );
 export const COLLABORATION_BACKEND_BASE_URL =
   process.env.COLLABORATION_BACKEND_BASE_URL || 'http://app-dev:8000';
+// The name of the backend's session cookie (`SESSION_COOKIE_NAME` on the
+// Django side, `docs_sessionid` there too). It decides whether
+// `authenticate` has to ask the backend who a caller is at all: the backend
+// only ever speaks sessions through that one cookie, so a `Cookie` header
+// carrying others (csrf, consent, …) but not this one can only resolve to the
+// anonymous identity — the `users/me` call would answer 401 — and is answered
+// anonymously without the roundtrip. Not read from the environment: a
+// two-party contract, hardcoded like the audiences.
+export const SESSION_COOKIE_NAME = 'docs_sessionid';
 export const allowedOrigins = (
   process.env.COLLABORATION_SERVER_ORIGIN || 'http://localhost:3000'
 ).split(',');
@@ -143,15 +152,12 @@ export const YHUB_AUDIENCE = 'yhub';
 // miss its S3 object and fork the document's lineage)
 export const UUID4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-// an empty Yjs update (what `Y.encodeStateAsUpdate(new Y.Doc())` encodes to) —
-// hardcoded so we don't import @y/y for two bytes
-export const EMPTY_YDOC = new Uint8Array([0, 0]);
 // yhub's "no effective content" convention: an empty update encodes to 2 bytes,
 // and anything up to 3 is read as an empty document
 export const EMPTY_UPDATE_MAX_BYTES = 3;
 // uws buffers the whole body before the handler sees it, so this cap does not
-// bound upload memory — it bounds what a single create hands to a compute
-// worker and writes to the valkey stream as one message. Creates carry one
+// bound upload memory — it bounds what a single create scans on the main
+// thread and writes to the valkey stream as one message. Creates carry one
 // freshly-converted snapshot (typically KBs); anything bigger belongs on the
 // websocket path.
 export const MAX_CREATE_BYTES = 10 * 1024 * 1024;
@@ -169,6 +175,30 @@ export const BACKEND_REQUEST_TIMEOUT_MS = intEnv(
   'YHUB_BACKEND_REQUEST_TIMEOUT_MS',
   5000,
 );
+// How long yhub waits for `authenticate` or `authorize` before it gives up on
+// the call and answers 503 (a websocket recheck closes with 1013); yhub
+// defaults to 10s since 0.10.0. Our `authorize` chains two backend calls and,
+// on the first open of a legacy document, its seed from S3 (10s on its own),
+// so 10s would turn every slow seed into a refused connection even though each
+// of those steps is bounded already. This is the backstop above them, and it
+// has to be raised along with YHUB_BACKEND_REQUEST_TIMEOUT_MS.
+export const AUTH_TIMEOUT_MS = intEnv('YHUB_AUTH_TIMEOUT_MS', 30000);
+// The authz cache (see authz-cache.ts): how long each layer may serve what a
+// previous connection read from the backend. All three default to 0 — caching
+// off, the behavior yhub has always had — and a deployment turns them up once
+// it has watched the backend-call rates. The abilities TTL is the one that
+// trades against revocation latency, and `reset-connections` deletes those
+// keys cluster-wide anyway: the TTL is only the backstop for a kick that was
+// lost, not the mechanism. Identity is safe to live longest: it fails closed
+// at the abilities fetch. The access date bounds history reads only, and only
+// a new grant can move it.
+export const IDENTITY_CACHE_TTL_MS = intEnv('YHUB_IDENTITY_CACHE_TTL_MS', 0, 0);
+export const ABILITIES_CACHE_TTL_MS = intEnv(
+  'YHUB_ABILITIES_CACHE_TTL_MS',
+  0,
+  0,
+);
+export const ACCESS_CACHE_TTL_MS = intEnv('YHUB_ACCESS_CACHE_TTL_MS', 0, 0);
 // Audience of the tokens the backend accepts from us. It must match the one
 // its CollaborationServerAuthentication requires, a token minted for anything
 // else is refused there.

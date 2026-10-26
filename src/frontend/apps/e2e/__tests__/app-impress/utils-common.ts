@@ -18,6 +18,9 @@ export const CONFIG = {
   AI_FEATURE_BLOCKNOTE_ENABLED: false,
   AI_FEATURE_LEGACY_ENABLED: true,
   API_USERS_SEARCH_QUERY_MIN_LENGTH: 3,
+  COLLABORATION_HTTP_FALLBACK_AWARENESS_ENABLED: true,
+  COLLABORATION_HTTP_FALLBACK_JSON_ENABLED: false,
+  COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL: 10000,
   COLLABORATION_LOCAL_DOC_RETENTION_DAYS: 30,
   COLLABORATION_VERSION_GRANULARITY_MS: 60000,
   COLLABORATION_WS_INACTIVITY_TIMEOUT: 15,
@@ -203,7 +206,9 @@ export const verifyDocName = async (page: Page, docName: string) => {
     timeout: 10000,
   });
 
-  await expect(card).toHaveText(new RegExp(docName), {
+  // Escape regex special characters so titles like "Doc (copy)" match literally
+  const escapedDocName = docName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await expect(card).toHaveText(new RegExp(escapedDocName), {
     timeout: 10000,
   });
 };
@@ -233,10 +238,8 @@ export const goToGridDoc = async (
   page: Page,
   { nthRow = 1, title }: GoToGridDocOptions = {},
 ) => {
-  if (
-    await page.getByRole('button', { name: 'Back to homepage' }).isVisible()
-  ) {
-    await page.getByRole('button', { name: 'Back to homepage' }).click();
+  if (await page.getByRole('link', { name: 'Back to homepage' }).isVisible()) {
+    await page.getByRole('link', { name: 'Back to homepage' }).click();
   }
 
   const docsGrid = page.getByTestId('docs-grid');

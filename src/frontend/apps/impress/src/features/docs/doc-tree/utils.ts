@@ -11,6 +11,8 @@ import { Doc } from '../doc-management';
 
 export const CLASS_TREE_ITEM_ACTIONS = 'doc-tree-root-item-actions';
 
+export const ID_TREE_KEYBOARD_INSTRUCTIONS = 'doc-tree-keyboard-instructions';
+
 export const isWithinTreeItemActions = (event: React.SyntheticEvent) =>
   !!(event.target as HTMLElement | null)?.closest(
     `.${CLASS_TREE_ITEM_ACTIONS}`,
@@ -43,6 +45,11 @@ export const useTreeContextOrNull = <T = Doc>(): TreeContextType<T> | null =>
  * mutating a doc from a tree item must sync the changed fields into the tree by
  * hand, otherwise the tree UI stays stale until it is reloaded.
  *
+ * Never call `treeData.updateNode` in the same tick as `handleMove`,
+ * `addChild` or `deleteNode`: it rebuilds the node from the children of the
+ * last render and brings back the ones just moved or removed (duplicate React
+ * keys). Pass `keepFocus: true` to update the node in place instead.
+ *
  * No-op when there is no tree context (e.g. the doc grid or the doc header),
  * where the react-query cache is the single source of truth.
  */
@@ -50,6 +57,7 @@ export const syncDocInTree = (
   treeContext: TreeContextType<Doc> | null,
   docId: string,
   data: Partial<Doc>,
+  options?: { keepFocus?: boolean },
 ) => {
   if (!treeContext) {
     return;
@@ -58,11 +66,57 @@ export const syncDocInTree = (
   const { root } = treeContext;
   if (root && root.id === docId) {
     treeContext.setRoot({ ...root, ...data });
+  } else if (options?.keepFocus) {
+    // `updateNode` rebuilds the row and loses the focus inside it.
+    const node = treeContext.treeData.getNode(docId);
+    if (node) {
+      Object.assign(node, data);
+    }
   } else if (treeContext.treeData.getNode(docId)) {
     treeContext.treeData.updateNode(docId, data);
   }
 
-  treeContext.treeApiRef.current?.focus(docId);
+  if (!options?.keepFocus) {
+    treeContext.treeApiRef.current?.focus(docId);
+  }
+};
+
+/**
+ * Adds `delta` to the `numchild` of a doc kept by the tree, so what reads it
+ * (e.g. the duplicate action of its item) doesn't go stale when a child is
+ * created or deleted. No-op when the tree doesn't hold the doc.
+ *
+ * `keepFocus` updates the node in place (see `syncDocInTree`): required when
+ * the tree structure changes in the same tick, because `updateNode` rebuilds
+ * the node from the children of the last render and would bring back the
+ * ones that were just moved or removed.
+ */
+export const addToNumchildInTree = (
+  treeContext: TreeContextType<Doc> | TreeContextType<Doc | null> | null,
+  docId: string,
+  delta: number,
+  options?: { keepFocus?: boolean },
+) => {
+  if (!treeContext) {
+    return;
+  }
+
+  const node: TreeViewDataType<Doc> | null | undefined =
+    treeContext.root?.id === docId
+      ? treeContext.root
+      : treeContext.treeData.getNode(docId);
+  if (!node || !isDocNode(node)) {
+    return;
+  }
+
+  syncDocInTree(
+    treeContext as TreeContextType<Doc>,
+    docId,
+    {
+      numchild: Math.max(0, node.numchild + delta),
+    },
+    options,
+  );
 };
 
 export const reloadTree = (treeContext: TreeContextType<Doc | null> | null) => {

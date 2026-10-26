@@ -374,7 +374,6 @@ class Base(Configuration):
         "django.middleware.common.CommonMiddleware",
         "django.middleware.csrf.CsrfViewMiddleware",
         "django.contrib.auth.middleware.AuthenticationMiddleware",
-        "core.middleware.ForceSessionMiddleware",
         "core.middleware.SaveRawBodyMiddleware",
         "django.contrib.messages.middleware.MessageMiddleware",
         "csp.middleware.CSPMiddleware",
@@ -472,6 +471,11 @@ class Base(Configuration):
                 environ_name="API_DOCUMENT_THROTTLE_RATE",
                 environ_prefix=None,
             ),
+            "media_auth": values.Value(
+                default="200/minute",
+                environ_name="API_MEDIA_AUTH_THROTTLE_RATE",
+                environ_prefix=None,
+            ),
             "document_access": values.Value(
                 default="50/minute",
                 environ_name="API_DOCUMENT_ACCESS_THROTTLE_RATE",
@@ -563,6 +567,30 @@ class Base(Configuration):
     COLLABORATION_WS_INACTIVITY_TIMEOUT = values.IntegerValue(
         None,
         environ_name="COLLABORATION_WS_INACTIVITY_TIMEOUT",
+        environ_prefix=None,
+    )
+    # Whether an editor on that http fallback also publishes and receives presence
+    # (cursors). Turning it off drops the periodic presence update and the 15 seconds
+    # cap on the polling interval, at the price of no remote cursors on the fallback.
+    COLLABORATION_HTTP_FALLBACK_AWARENESS_ENABLED = values.BooleanValue(
+        True,
+        environ_name="COLLABORATION_HTTP_FALLBACK_AWARENESS_ENABLED",
+        environ_prefix=None,
+    )
+    # Whether a browser whose websocket cannot open talks json, with the binary parts
+    # in base64, to the collaboration server over http instead of the lib0-any binary
+    # format, for the networks whose firewall refuses its content type.
+    COLLABORATION_HTTP_FALLBACK_JSON_ENABLED = values.BooleanValue(
+        False,
+        environ_name="COLLABORATION_HTTP_FALLBACK_JSON_ENABLED",
+        environ_prefix=None,
+    )
+    # How often, in milliseconds, a browser whose websocket cannot open polls the
+    # collaboration server over http instead. Every poll is authorized against the
+    # backend, so this sets most of the load such browsers put on it. At least 5000.
+    COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL = values.PositiveIntegerValue(
+        10000,
+        environ_name="COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL",
         environ_prefix=None,
     )
     # Granularity of the document version history, in milliseconds.
@@ -988,7 +1016,7 @@ class Base(Configuration):
         default=False, environ_name="AI_FEATURE_ENABLED", environ_prefix=None
     )
     # Far better UI but more flaky for the moment
-    # ⚠️ AGPL license, be sure to comply with the Blocknote license
+    # ⚠️ GPL license, be sure to comply with the Blocknote license
     # if you enable it (https://www.blocknotejs.org/)
     AI_FEATURE_BLOCKNOTE_ENABLED = values.BooleanValue(
         default=False, environ_name="AI_FEATURE_BLOCKNOTE_ENABLED", environ_prefix=None
@@ -1505,6 +1533,14 @@ class Base(Configuration):
         # a batch of nothing would walk no subtree and never end
         if cls.YHUB_RESET_CONNECTIONS_BATCH_SIZE < 1:
             raise ValueError("YHUB_RESET_CONNECTIONS_BATCH_SIZE must be at least 1.")
+
+        # every browser on the http fallback authorizes each poll against the backend:
+        # a few milliseconds, or seconds typed as milliseconds, would flood it
+        if cls.COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL < 5000:
+            raise ValueError(
+                "COLLABORATION_HTTP_FALLBACK_SYNC_INTERVAL must be at least 5000 "
+                "(milliseconds)."
+            )
 
         if cls.POSTHOG_KEY is not None:
             posthog.api_key = cls.POSTHOG_KEY

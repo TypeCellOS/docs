@@ -6,12 +6,16 @@ import { create } from 'zustand';
 import { collaborationHttpTarget } from '@/core/config/hooks/useCollaborationUrl';
 import { Base64 } from '@/docs/doc-management';
 
+import { withJsonTransport } from '../api/httpFallbackJson';
 import { HttpFallback } from '../httpFallback';
 import { rememberLocalDoc } from '../localDocs';
 import { LocalPersistence } from '../localPersistence';
 
-interface CreateProviderOptions {
+export interface CreateProviderOptions {
   readOnly?: boolean;
+  httpJson?: boolean;
+  httpSyncInterval?: number;
+  httpAwareness?: boolean;
 }
 
 interface UseCollaborationStore {
@@ -38,6 +42,7 @@ interface UseCollaborationStore {
 }
 
 const RECONNECT_JITTER_MAX_MS = 3000;
+const hasContent = (doc: Y.Doc) => doc.get('document-store').length > 0;
 
 let lostConnectionTimeout: ReturnType<typeof setTimeout>;
 let fallbackTimeout: ReturnType<typeof setTimeout>;
@@ -66,7 +71,17 @@ const defaultValues: Omit<
 export const useCollaborationStore = create<UseCollaborationStore>()(
   (set, get) => ({
     ...defaultValues,
-    createProvider: (wsUrl, storeId, initialDoc, { readOnly = false } = {}) => {
+    createProvider: (
+      wsUrl,
+      storeId,
+      initialDoc,
+      {
+        readOnly = false,
+        httpJson = false,
+        httpSyncInterval,
+        httpAwareness = true,
+      } = {},
+    ) => {
       const doc = new Y.Doc({ guid: storeId });
       if (initialDoc) {
         Y.applyUpdate(doc, Buffer.from(initialDoc, 'base64'));
@@ -81,9 +96,11 @@ export const useCollaborationStore = create<UseCollaborationStore>()(
       let persistence: LocalPersistence | undefined;
       if (typeof indexedDB !== 'undefined') {
         try {
-          persistence = new LocalPersistence(storeId, doc, () =>
-            set({ isReady: true }),
-          );
+          persistence = new LocalPersistence(storeId, doc, () => {
+            if (hasContent(doc)) {
+              set({ isReady: true });
+            }
+          });
           void rememberLocalDoc(storeId);
         } catch (error) {
           console.error('Failed to open the local copy of the document', error);
@@ -98,17 +115,29 @@ export const useCollaborationStore = create<UseCollaborationStore>()(
       });
 
       const target = collaborationHttpTarget(wsUrl);
+      const carriesAwareness = !readOnly && httpAwareness;
+      const pollInterval = Math.max(5000, httpSyncInterval ?? 10000);
+      const send: typeof fetch = (input, init) => fetch(input, init);
       fallback = target
         ? new HttpFallback(
             doc,
-            `${target.serverUrl}/ydoc/v1/${target.org}/${storeId}?branch=main&gc=true&awareness=${!readOnly}`,
-            readOnly ? undefined : awareness,
+            `${target.serverUrl}/ydoc/v1/${target.org}/${storeId}?branch=main&gc=true&awareness=${carriesAwareness}`,
+            carriesAwareness ? awareness : undefined,
             () => set({ isSynced: true, isReady: true }),
             () => {
               provider.shouldConnect = false;
+              provider.disconnect();
+              clearTimeout(lostConnectionTimeout);
               clearTimeout(fallbackTimeout);
-              set({ isPermanentlyClosed: true });
+              set({
+                isConnected: false,
+                hasLostConnection: false,
+                isPermanentlyClosed: true,
+              });
             },
+            readOnly,
+            carriesAwareness ? Math.min(pollInterval, 15000) : pollInterval,
+            httpJson ? withJsonTransport(send) : send,
           )
         : undefined;
       const startFallback = () => {
@@ -124,9 +153,10 @@ export const useCollaborationStore = create<UseCollaborationStore>()(
       waitForFallback();
 
       const syncState = () => {
+        const isSynced = provider.synced || (fallback?.synced ?? false);
         set({
-          isSynced: provider.synced || (fallback?.synced ?? false),
-          isReady: true,
+          isSynced,
+          isReady: get().isReady || isSynced || hasContent(doc),
         });
       };
 
@@ -135,8 +165,7 @@ export const useCollaborationStore = create<UseCollaborationStore>()(
           clearTimeout(lostConnectionTimeout);
           clearTimeout(fallbackTimeout);
           fallback?.disconnect();
-          syncState();
-          set({ isConnected: true, isReady: true });
+          set({ isConnected: true });
         } else if (status === 'disconnected' && provider.shouldConnect) {
           waitForFallback();
         }
@@ -157,7 +186,7 @@ export const useCollaborationStore = create<UseCollaborationStore>()(
           fallback?.disconnect();
           set({
             isConnected: false,
-            isReady: true,
+            isReady: get().isReady || hasContent(doc),
             hasLostConnection: false,
             isPermanentlyClosed: true,
           });
@@ -172,8 +201,9 @@ export const useCollaborationStore = create<UseCollaborationStore>()(
           startFallback();
         }
         const { isConnected: wasConnected, isReady: wasReady } = get();
-        if (wasConnected || !wasReady) {
-          set({ isConnected: false, isReady: true });
+        const isReady = wasReady || hasContent(doc);
+        if (wasConnected || isReady !== wasReady) {
+          set({ isConnected: false, isReady });
         }
         if (!wasConnected) {
           return;

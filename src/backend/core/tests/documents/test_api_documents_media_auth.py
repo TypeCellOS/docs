@@ -578,3 +578,78 @@ def test_api_documents_media_auth_authorization_cost_is_bounded(
 
     with django_assert_num_queries(MEDIA_AUTH_QUERY_COUNT):
         assert _media_auth_ready(user, key).status_code == 200
+
+
+def _public_attachment_key():
+    """Create a public document holding one attachment and return its key."""
+    document = factories.DocumentFactory(link_reach="public")
+    key = f"{document.id!s}/attachments/{uuid4()!s}.jpg"
+    document.attachments = [key]
+    document.save()
+    return key
+
+
+def test_api_documents_media_auth_throttling_own_scope(monkeypatch, settings):
+    """
+    Media-auth is throttled by its own "media_auth" scope: the throttle failure
+    is reported under that scope once its rate is exceeded.
+    """
+    rates = settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]
+    monkeypatch.setitem(rates, "media_auth", "3/minute")
+    monkeypatch.setitem(rates, "document", "1000/minute")
+    key = _public_attachment_key()
+
+    for _i in range(3):
+        assert _media_auth_ready(None, key).status_code == 200
+
+    with patch("core.api.throttling.capture_message") as mock_capture_message:
+        assert _media_auth_ready(None, key).status_code == 429
+    mock_capture_message.assert_called_once_with(
+        "Rate limit exceeded for scope media_auth", "warning"
+    )
+
+
+def test_api_documents_media_auth_throttling_does_not_consume_document_scope(
+    monkeypatch, settings
+):
+    """
+    Displaying many attachments must not use up the "document" bucket shared by
+    the other document endpoints (retrieve, children...).
+    """
+    rates = settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]
+    monkeypatch.setitem(rates, "media_auth", "1000/minute")
+    monkeypatch.setitem(rates, "document", "2/minute")
+    key = _public_attachment_key()
+    document_id = key.split("/", maxsplit=1)[0]
+
+    # Far more media-auth calls than the "document" rate allows all succeed.
+    for _i in range(10):
+        assert _media_auth_ready(None, key).status_code == 200
+
+    # The "document" bucket of the same anonymous client is still untouched.
+    client = APIClient()
+    for _i in range(2):
+        response = client.get(f"/api/v1.0/documents/{document_id:s}/")
+        assert response.status_code == 200
+    response = client.get(f"/api/v1.0/documents/{document_id:s}/")
+    assert response.status_code == 429
+
+
+def test_api_documents_media_auth_throttling_not_blocked_by_document_scope(
+    monkeypatch, settings
+):
+    """
+    An exhausted "document" bucket must not break the attachments of the
+    document, since nginx shows a broken image when media-auth answers 429.
+    """
+    rates = settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]
+    monkeypatch.setitem(rates, "media_auth", "1000/minute")
+    monkeypatch.setitem(rates, "document", "1/minute")
+    key = _public_attachment_key()
+    document_id = key.split("/", maxsplit=1)[0]
+
+    client = APIClient()
+    assert client.get(f"/api/v1.0/documents/{document_id:s}/").status_code == 200
+    assert client.get(f"/api/v1.0/documents/{document_id:s}/").status_code == 429
+
+    assert _media_auth_ready(None, key).status_code == 200

@@ -162,6 +162,17 @@ export const comparePDFWithAssetFolder = async ({
   const referencePdfPath = path.join(__dirname, 'assets', filename);
   const referencePdfBuffer = fs.readFileSync(referencePdfPath);
 
+  // The generated PDF, in the report: the new fixture when a change is intended.
+  if (testInfo) {
+    await writeReport(
+      testInfo,
+      filename,
+      'generated-pdf',
+      originPdfBuffer,
+      'application/pdf',
+    );
+  }
+
   // Parse both PDFs
   const generatedPdf = new PDFParse({ data: originPdfBuffer });
   const referencePdf = new PDFParse({ data: referencePdfBuffer });

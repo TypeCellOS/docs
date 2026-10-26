@@ -1,5 +1,6 @@
 import { Awareness } from '@y/protocols/awareness';
 import * as Y from '@y/y';
+import { encodeAny } from 'lib0/buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useProviderStore } from '../useProviderStore';
@@ -178,6 +179,25 @@ describe('useProviderStore', () => {
     provider.emit('sync', true);
     expect(useProviderStore.getState().isSynced).toBe(true);
     expect(useProviderStore.getState().isReady).toBe(true);
+  });
+
+  it('reports the websocket provider as synced once the http fallback syncs', async () => {
+    // The socket never connects; the editor binds only to a synced provider.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            new Uint8Array(
+              encodeAny({ doc: Y.encodeStateAsUpdate(new Y.Doc()) }),
+            ),
+          ),
+      ),
+    );
+    // The fallback starts 5s after the socket fails, then polls once.
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(provider.synced).toBe(true);
+    expect(useProviderStore.getState().isSynced).toBe(true);
   });
 
   it('tears everything down with the document', () => {

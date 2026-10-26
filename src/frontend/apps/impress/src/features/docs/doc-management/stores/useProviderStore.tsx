@@ -103,7 +103,13 @@ export const useCollaborationStore = create<UseCollaborationStore>()(
             doc,
             `${target.serverUrl}/ydoc/v1/${target.org}/${storeId}?branch=main&gc=true&awareness=${!readOnly}`,
             readOnly ? undefined : awareness,
-            () => set({ isSynced: true, isReady: true }),
+            () => {
+              // BlockNote binds the editor to the doc once the provider reports
+              // `synced`. The socket never syncs while it is blocked, so without
+              // this the editor accepts text that never reaches the doc.
+              provider.synced = true;
+              set({ isSynced: true, isReady: true });
+            },
             () => {
               provider.shouldConnect = false;
               clearTimeout(fallbackTimeout);

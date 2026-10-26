@@ -27,6 +27,7 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) reconcile current comment state after leaving version history
 - 🐛(frontend) authenticate history requests and use consistent snapshot IDs
 - ✅(e2e) exercise sidebar history and renderer-independent PDF metadata
 - 🐛(frontend) bind collaborative editing after HTTP or offline readiness

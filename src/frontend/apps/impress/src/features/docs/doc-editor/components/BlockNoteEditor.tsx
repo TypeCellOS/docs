@@ -485,7 +485,13 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
           <VersioningComponentsProvider>
             <VersioningSidebarPanel
               key={doc.id}
-              onClose={() => setIsVersioningSidebarOpen(false)}
+              onClose={() => {
+                setIsVersioningSidebarOpen(false);
+                // Historical text can reintroduce comment marks, but threads
+                // live outside the restored fragment. Reconcile their current
+                // resolved/deleted state after returning to the live editor.
+                threadStore.refreshThreads();
+              }}
               debug={{
                 defaults: historyDefaults,
                 initialSettings:

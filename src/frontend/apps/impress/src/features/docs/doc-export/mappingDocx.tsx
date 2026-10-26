@@ -14,6 +14,15 @@ import {
 import { createInlineContentMappingInterlinkingLinkDocx } from './inline-content-mapping';
 import { DocsExporterDocx } from './types';
 
+const tableMapping = docxDefaultSchemaMappings.blockMapping.table;
+
+// NaN widths are not supported by DOCX. Keep the mapping's shape intact:
+// function mappings let the exporter append and indent child blocks itself.
+const normalizeColumnWidths = (widths: (number | undefined)[]) =>
+  widths.map((width) =>
+    typeof width === 'number' && Number.isNaN(width) ? undefined : width,
+  );
+
 export const getDocxDocsSchemaMappings = (
   interlinkTitles: Map<string, string>,
 ): DocsExporterDocx['mappings'] => ({
@@ -32,42 +41,39 @@ export const getDocxDocsSchemaMappings = (
     quote: blockMappingQuoteDocx,
     image: blockMappingImageDocx,
     uploadLoader: blockMappingUploadLoaderDocx,
-    table: {
-      withChildren: (
-        block,
-        exporter,
-        nestedLevel,
-        numberedListIndex,
-        children,
-      ) => {
-        /**
-         * Nan values are not supported, so we need to replace them with undefined
-         * to avoid issues during the export.
-         */
-        const { columnWidths } = block.content;
-        const hasNaN = columnWidths.some(
-          (width) => typeof width === 'number' && Number.isNaN(width),
-        );
-        if (hasNaN) {
-          block.content.columnWidths = columnWidths.map((width) =>
-            typeof width === 'number' && Number.isNaN(width)
-              ? undefined
-              : width,
-          );
-        }
-
-        const mapping = docxDefaultSchemaMappings.blockMapping.table;
-        return typeof mapping === 'function'
-          ? mapping(block, exporter, nestedLevel, numberedListIndex)
-          : mapping.withChildren(
+    table:
+      typeof tableMapping === 'function'
+        ? (block, exporter, nestedLevel, numberedListIndex) => {
+            block.content.columnWidths = normalizeColumnWidths(
+              block.content.columnWidths,
+            );
+            return tableMapping(
+              block,
+              exporter,
+              nestedLevel,
+              numberedListIndex,
+            );
+          }
+        : {
+            withChildren: (
               block,
               exporter,
               nestedLevel,
               numberedListIndex,
               children,
-            );
-      },
-    },
+            ) => {
+              block.content.columnWidths = normalizeColumnWidths(
+                block.content.columnWidths,
+              );
+              return tableMapping.withChildren(
+                block,
+                exporter,
+                nestedLevel,
+                numberedListIndex,
+                children,
+              );
+            },
+          },
   },
   inlineContentMapping: {
     ...docxDefaultSchemaMappings.inlineContentMapping,

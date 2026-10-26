@@ -19,7 +19,6 @@ and this project adheres to
 ### Changed
 
 - ♻️(frontend) hide unavailable manual version actions in the history sidebar
-- ✨(yhub) allow limiting the compute pool with YHUB_COMPUTE_POOL_SIZE
 - ⬆️(frontend) update BlockNote preview packages to 83153fda2e
 - 🐛(frontend) adapt to the BlockNote 0.56 editor and exporter APIs
 - ♻️(frontend) restore bounded editor history through native yhub rollback

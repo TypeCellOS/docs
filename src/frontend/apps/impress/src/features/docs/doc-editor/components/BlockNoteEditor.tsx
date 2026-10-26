@@ -260,7 +260,10 @@ export const BlockNoteEditor = ({ doc, provider }: BlockNoteEditorProps) => {
   const editor: DocsBlockNoteEditor = useCreateBlockNote(
     withCollaboration({
       collaboration: {
-        provider,
+        // DocEditor already waits for websocket, HTTP, or local readiness.
+        // Passing the socket's `synced` flag would prevent the Yjs binding
+        // from starting when only the HTTP fallback is available.
+        provider: { awareness: provider.awareness },
         fragment: provider.doc.get('document-store'),
         user: {
           id: user?.id ?? 'anonymous',

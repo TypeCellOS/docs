@@ -27,6 +27,8 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) bind collaborative editing after HTTP or offline readiness
+- ✅(e2e) locate editor and comment menus outside their trigger containers
 - 🐛(frontend) confirm history restores and show author-only attribution
 - 🐛(export) preserve DOCX table children and accept modern Yjs updates
 - 🐛(frontend) fetch named versions fresh after deleting one

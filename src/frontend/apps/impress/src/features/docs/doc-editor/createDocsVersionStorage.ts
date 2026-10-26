@@ -13,7 +13,10 @@ export const createDocsVersionStorage = (
     fragment: Y.Node;
     beforeRestoreName: string;
   },
-): ReturnType<typeof createYHubVersionStorage> => {
+): Omit<
+  ReturnType<typeof createYHubVersionStorage>,
+  'create' | 'rename' | 'remove'
+> => {
   const liveDoc: unknown = options.fragment.doc;
   if (!(liveDoc instanceof Y.Doc)) {
     throw new Error(
@@ -78,7 +81,12 @@ export const createDocsVersionStorage = (
   }
 
   return {
-    ...storage,
+    // Keep checkpoint creation internal; named-version actions are unavailable.
+    showCurrentVersion: storage.showCurrentVersion,
+    historyIncludesBeginning: storage.historyIncludesBeginning,
+    list: storage.list,
+    getContent: storage.getContent,
+    getAttributions: storage.getAttributions,
     async restore(id) {
       const to = Number(id);
       if (
